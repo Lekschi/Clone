@@ -332,3 +332,168 @@ export function constructionTile(size, tall, v) {
     },
   };
 }
+
+// ---------- highways ----------
+export function highwayTile(mask, hmask, bridge) {
+  return {
+    fw: 1, fd: 1, H: bridge ? 4 : 8, pad: 4,
+    draw(P) {
+      const z = bridge ? 2 : 0;
+      const a = 0.06, b = 0.94;
+      const rects = [[a, a, b, b]];
+      if (mask & 1) rects.push([a, 0, b, a]); if (mask & 2) rects.push([b, a, 1, b]);
+      if (mask & 4) rects.push([a, b, b, 1]); if (mask & 8) rects.push([0, a, a, b]);
+      if (bridge) {
+        P.box(0.35, 0.35, 0.65, 0.65, -10, z, '#a59f92', { edge: false, ao: false });
+        P.box(0, 0, 1, 1, z - 3, z, '#b3ad9f', { edge: false, ao: false });
+      }
+      for (const r of rects) P.poly([[r[0], r[1], z], [r[2], r[1], z], [r[2], r[3], z], [r[0], r[3], z]], '#4f5257');
+      const c = P.c;
+      for (let k = 0; k < 22; k++) {
+        const [sx, sy] = P.pt(0.1 + hash2(k, mask, 71) * 0.8, 0.1 + hash2(k, mask, 72) * 0.8, z);
+        c.fillStyle = hash2(k, mask, 73) < 0.5 ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.05)';
+        c.fillRect(sx, sy, 1.2 * P.s, 0.8 * P.s);
+      }
+      const alongX = (hmask & 10) && !(hmask & 5), alongY = (hmask & 5) && !(hmask & 10);
+      const lane = (pts) => P.line3(pts[0], pts[1], 'rgba(240,240,232,0.85)', 0.7);
+      if (alongX) {
+        P.box(0, 0.47, 1, 0.53, z, z + 2.4, '#c9c4b8', { edge: false, ao: false });
+        for (const y of [0.27, 0.73]) { lane([[0.05, y, z], [0.3, y, z]]); lane([[0.55, y, z], [0.8, y, z]]); }
+        P.line3([0, 0.08, z], [1, 0.08, z], '#e9e2c6', 0.6); P.line3([0, 0.92, z], [1, 0.92, z], '#e9e2c6', 0.6);
+        P.box(0, 0.94, 1, 0.97, z, z + 2, '#b7b2a7', { edge: false, ao: false });
+      } else if (alongY) {
+        P.box(0.47, 0, 0.53, 1, z, z + 2.4, '#c9c4b8', { edge: false, ao: false });
+        for (const x of [0.27, 0.73]) { lane([[x, 0.05, z], [x, 0.3, z]]); lane([[x, 0.55, z], [x, 0.8, z]]); }
+        P.line3([0.08, 0, z], [0.08, 1, z], '#e9e2c6', 0.6); P.line3([0.92, 0, z], [0.92, 1, z], '#e9e2c6', 0.6);
+        P.box(0.94, 0, 0.97, 1, z, z + 2, '#b7b2a7', { edge: false, ao: false });
+      } else {
+        // interchange / junction: arrows and stop bars
+        for (const [k, at] of [[1, [0.5, 0.12]], [4, [0.5, 0.88]], [8, [0.12, 0.5]], [2, [0.88, 0.5]]]) if (mask & k) P.groundEllipse(at[0], at[1], 0.05, 0.05, 'rgba(240,240,232,0.7)', z);
+      }
+      if (!bridge && (alongX || alongY)) {
+        const [lx, ly] = alongX ? [0.5, 0.5] : [0.5, 0.5];
+        P.line3([lx, ly, z + 2], [lx, ly, z + 12], '#5a5f64', 0.8);
+        P.glowDot(lx + (alongY ? 0.15 : 0), ly + (alongX ? 0.15 : 0), z + 12, 7, 'rgba(255,214,140,0.9)');
+        P.glowDot(lx - (alongY ? 0.15 : 0), ly - (alongX ? 0.15 : 0), z + 12, 7, 'rgba(255,214,140,0.9)');
+      }
+    },
+  };
+}
+
+// ---------- railway ----------
+function bez(a, c, b, t) { const u = 1 - t; return [u * u * a[0] + 2 * u * t * c[0] + t * t * b[0], u * u * a[1] + 2 * u * t * c[1] + t * t * b[1]]; }
+function trackPaths(mask) {
+  const mid = [[0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]];
+  const arms = [0, 1, 2, 3].filter((k) => mask & (1 << k));
+  const paths = [];
+  if (arms.length === 0) paths.push([[0.5, 0.2], [0.5, 0.8]]);
+  else if (arms.length === 1) { const e = mid[arms[0]]; paths.push([e, [0.5, 0.5], [1 - e[0], 1 - e[1]].map((v) => 0.5 + (v - 0.5) * 0.5)]); }
+  else if (arms.length === 2 && (arms[1] - arms[0]) === 2) paths.push([mid[arms[0]], mid[arms[1]]]);
+  else if (arms.length === 2) {
+    const A = mid[arms[0]], B = mid[arms[1]], pts = [];
+    for (let k = 0; k <= 12; k++) pts.push(bez(A, [0.5, 0.5], B, k / 12));
+    paths.push(pts);
+  } else {
+    // junction: straight through on the main axis plus curved branches
+    if ((mask & 5) === 5) paths.push([mid[0], mid[2]]);
+    if ((mask & 10) === 10) paths.push([mid[3], mid[1]]);
+    for (const k of arms) if (!paths.some((p) => p.includes(mid[k]))) paths.push([mid[k], [0.5, 0.5]]);
+  }
+  return paths;
+}
+function resample(path) {
+  // densify a polyline so offsets follow curves
+  const out = [];
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i], b = path[i + 1]; const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.08));
+    for (let k = 0; k < n; k++) out.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]);
+  }
+  out.push(path[path.length - 1]);
+  return out;
+}
+export function railTile(mask, mode) {
+  // mode: 0 = ground, 1 = bridge, 2 = level crossing on a road
+  return {
+    fw: 1, fd: 1, H: mode === 1 ? 6 : 4, pad: 4,
+    draw(P) {
+      const z = mode === 1 ? 2 : 0;
+      const c = P.c;
+      if (mode === 1) {
+        P.box(0.38, 0.38, 0.62, 0.62, -10, z, '#a59f92', { edge: false, ao: false });
+        const sides = mask & 5 && !(mask & 10) ? [0.25, 0, 0.75, 1] : mask & 10 && !(mask & 5) ? [0, 0.25, 1, 0.75] : [0.2, 0.2, 0.8, 0.8];
+        P.box(sides[0], sides[1], sides[2], sides[3], z - 3, z, '#a79f90', { edge: false, ao: false });
+      }
+      const paths = trackPaths(mask).map(resample);
+      const stroke = (pts, off, col, w) => {
+        c.strokeStyle = col; c.lineWidth = w * P.s; c.lineJoin = 'round'; c.lineCap = 'butt';
+        c.beginPath();
+        pts.forEach((p, k) => {
+          const q = pts[Math.min(pts.length - 1, k + 1)], r = pts[Math.max(0, k - 1)];
+          let tx = q[0] - r[0], ty = q[1] - r[1]; const L = Math.hypot(tx, ty) || 1; tx /= L; ty /= L;
+          const s = P.pt(p[0] - ty * off, p[1] + tx * off, z);
+          k ? c.lineTo(s[0], s[1]) : c.moveTo(s[0], s[1]);
+        });
+        c.stroke();
+      };
+      for (const pts of paths) if (mode !== 2) stroke(pts, 0, '#9a9183', 15);
+      for (const pts of paths) {
+        if (mode !== 2) {
+          // sleepers
+          for (let k = 0; k < pts.length; k += 1) {
+            const p = pts[k], q = pts[Math.min(pts.length - 1, k + 1)], r = pts[Math.max(0, k - 1)];
+            let tx = q[0] - r[0], ty = q[1] - r[1]; const L = Math.hypot(tx, ty) || 1; tx /= L; ty /= L;
+            const a = P.pt(p[0] - ty * 0.17, p[1] + tx * 0.17, z), b = P.pt(p[0] + ty * 0.17, p[1] - tx * 0.17, z);
+            c.strokeStyle = '#6a5442'; c.lineWidth = 1.6 * P.s; c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke();
+          }
+        } else {
+          stroke(pts, 0, 'rgba(40,40,42,0.55)', 9);
+        }
+        stroke(pts, 0.1, '#5b5d60', 1.4); stroke(pts, -0.1, '#5b5d60', 1.4);
+        stroke(pts, 0.1, '#d3d6d9', 0.6); stroke(pts, -0.1, '#d3d6d9', 0.6);
+      }
+      if (mode === 2) {
+        // crossing barriers
+        for (const [x, y] of [[0.12, 0.12], [0.88, 0.88]]) { P.line3([x, y, 0], [x, y, 7], '#3d4044', 0.7); P.glowDot(x, y, 7, 3, 'rgba(255,70,50,0.9)'); }
+      }
+    },
+  };
+}
+
+export function trainCar(axis, kind, col) {
+  return {
+    fw: 1, fd: 1, H: 12, pad: 3,
+    draw(P) {
+      const L = 0.42, W = 0.17;
+      const [x0, x1, y0, y1] = axis === 'x' ? [0.5 - L / 2, 0.5 + L / 2, 0.5 - W / 2, 0.5 + W / 2] : [0.5 - W / 2, 0.5 + W / 2, 0.5 - L / 2, 0.5 + L / 2];
+      P.box(x0, y0, x1, y1, 1.2, 2.4, '#2c2e31', { edge: false, ao: false });
+      if (kind === 'loco') {
+        P.box(x0, y0, x1, y1, 2.4, 8.5, col, { edge: false, ao: false });
+        P.box(x0, y0, x1, y1, 5.6, 6.6, '#f2ede2', { edge: false, ao: false, noTop: true });
+        const nose = 0.08;
+        if (axis === 'x') P.box(x1 - nose, y0 + 0.02, x1, y1 - 0.02, 6.6, 8.2, '#2f4655', { edge: false, ao: false });
+        else P.box(x0 + 0.02, y1 - nose, x1 - 0.02, y1, 6.6, 8.2, '#2f4655', { edge: false, ao: false });
+      } else if (kind === 'pax') {
+        P.box(x0, y0, x1, y1, 2.4, 8, '#d9dcdd', { edge: false, ao: false });
+        P.box(x0, y0, x1, y1, 5, 6.6, '#34536a', { edge: false, ao: false, noTop: true });
+        P.box(x0, y0, x1, y1, 2.4, 3.4, col, { edge: false, ao: false, noTop: true });
+        P.glowDot((x0 + x1) / 2, y1, 5.8, 3, 'rgba(255,220,150,0.8)');
+      } else {
+        P.box(x0, y0, x1, y1, 2.4, 7.5, col, { edge: false, ao: false });
+        for (let k = 1; k < 4; k++) { const u = k / 4; if (axis === 'x') P.line3([x0 + (x1 - x0) * u, y1, 2.6], [x0 + (x1 - x0) * u, y1, 7.3], 'rgba(0,0,0,0.2)', 0.5); else P.line3([x1, y0 + (y1 - y0) * u, 2.6], [x1, y0 + (y1 - y0) * u, 7.3], 'rgba(0,0,0,0.2)', 0.5); }
+      }
+    },
+  };
+}
+
+export function busSprite(axis) {
+  return {
+    fw: 1, fd: 1, H: 10, pad: 3,
+    draw(P) {
+      const L = 0.36, W = 0.14;
+      const [x0, x1, y0, y1] = axis === 'x' ? [0.5 - L / 2, 0.5 + L / 2, 0.5 - W / 2, 0.5 + W / 2] : [0.5 - W / 2, 0.5 + W / 2, 0.5 - L / 2, 0.5 + L / 2];
+      P.box(x0, y0, x1, y1, 0.6, 7, '#e0a526', { edge: false, ao: false });
+      P.box(x0, y0, x1, y1, 3.8, 5.8, '#2e4b5c', { edge: false, ao: false, noTop: true });
+      P.poly([[x0, y0, 7.01], [x1, y0, 7.01], [x1, y1, 7.01], [x0, y1, 7.01]], '#f0eee6');
+    },
+  };
+}

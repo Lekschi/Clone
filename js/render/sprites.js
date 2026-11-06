@@ -79,6 +79,10 @@ export class SpriteBank {
   shimmer(f, v) { return this.get(`ws${f}_${v}`, () => G.waterShimmer(f, v)); }
   foam(m) { return this.get(`wf${m}`, () => G.shoreFoam(m)); }
   road(m, bridge) { return this.get(`r${m}_${bridge ? 1 : 0}`, () => G.roadTile(m, bridge)); }
+  highway(m, hm, bridge) { return this.get(`hw${m}_${hm}_${bridge ? 1 : 0}`, () => G.highwayTile(m, hm, bridge)); }
+  rail(m, mode) { return this.get(`rl${m}_${mode}`, () => G.railTile(m, mode)); }
+  train(axis, kind, col) { return this.get(`tr${axis}${kind}${col}`, () => G.trainCar(axis, kind, col)); }
+  bus(axis) { return this.get(`bus${axis}`, () => G.busSprite(axis)); }
   zone(zt, zd) { return this.get(`z${zt}_${zd}`, () => G.zoneTile(zt, zd)); }
   tree(d, v) { return this.get(`t${d}_${v}`, () => G.treeTile(d, v)); }
   pole(m) { return this.get(`p${m}`, () => G.poleTile(m)); }

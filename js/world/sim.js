@@ -3,7 +3,7 @@ import {
   BUILDINGS, ZONE_CAP, TIER_DESIRE, DENSITY_TIERS, POWER_USE, WATER_USE, SERVICE_POWER, SERVICE_WATER,
   MILESTONES, DAYS_PER_MONTH, TIER_NAMES, ZONE_NAMES,
 } from '../data/defs.js';
-import { T_WATER } from './world.js';
+import { T_WATER, HIGHWAY } from './world.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
@@ -48,6 +48,7 @@ export class Sim {
     this.updateRoads();
     this.updatePower();
     this.updateWater();
+    this.updateRail();
   }
 
   updateRoads() {
@@ -194,6 +195,55 @@ export class Sim {
     w.stats.waterDemand = Math.round(dem);
   }
 
+  // ---------- Rail & transit ----------
+  updateRail() {
+    const w = this.w; const W = w.w, H = w.h; const n = w.n;
+    const comp = this.railComp || (this.railComp = new Int32Array(n)); comp.fill(-1);
+    const info = []; const q = new Int32Array(n);
+    for (let st = 0; st < n; st++) {
+      if (!w.rail[st] || comp[st] >= 0) continue;
+      const id = info.length; const c = { outside: false, stations: 0, freight: 0, tiles: 0 }; info.push(c);
+      let qh = 0, qt = 0; q[qt++] = st; comp[st] = id;
+      while (qh < qt) {
+        const i = q[qh++]; c.tiles++;
+        const x = i % W, y = (i / W) | 0;
+        if (x === 0 || y === 0 || x === W - 1 || y === H - 1) c.outside = true;
+        if (x > 0 && w.rail[i - 1] && comp[i - 1] < 0) { comp[i - 1] = id; q[qt++] = i - 1; }
+        if (x < W - 1 && w.rail[i + 1] && comp[i + 1] < 0) { comp[i + 1] = id; q[qt++] = i + 1; }
+        if (y > 0 && w.rail[i - W] && comp[i - W] < 0) { comp[i - W] = id; q[qt++] = i - W; }
+        if (y < H - 1 && w.rail[i + W] && comp[i + W] < 0) { comp[i + W] = id; q[qt++] = i + W; }
+      }
+    }
+    // attach stations to the line they touch
+    const stations = [];
+    for (const b of w.buildings.values()) {
+      if (b.kind !== 'station' && b.kind !== 'freight') continue;
+      b._rail = -1;
+      for (let k = -1; k <= b.w && b._rail < 0; k++) for (const [x, y] of [[b.x + k, b.y - 1], [b.x + k, b.y + b.h], [b.x - 1, b.y + k], [b.x + b.w, b.y + k]]) {
+        if (w.railAt(x, y)) { b._rail = comp[w.idx(x, y)]; break; }
+      }
+      if (b._rail >= 0) { if (b.kind === 'station') info[b._rail].stations++; else info[b._rail].freight++; }
+      stations.push(b);
+    }
+    let pax = false, freight = false;
+    for (const b of stations) {
+      const c = b._rail >= 0 ? info[b._rail] : null;
+      b.active = !!c && b.powered && (b.kind === 'station' ? (c.stations >= 2 || c.outside) : c.outside);
+      if (b.active && b.kind === 'station' && c.outside) pax = true;
+      if (b.active && b.kind === 'freight') freight = true;
+    }
+    this.railInfo = info;
+    let depot = false;
+    for (const b of w.buildings.values()) if (b.kind === 'busdepot' && b.powered && (b._roadDist ?? 9) <= 1) depot = true;
+    for (const b of w.buildings.values()) if (b.kind === 'busdepot') b.active = b.powered && (b._roadDist ?? 9) <= 1;
+    for (const b of w.buildings.values()) if (b.kind === 'busstop') b.active = depot && (b._roadDist ?? 9) <= 1;
+    // highway reaching the map edge
+    let hwyOut = false;
+    for (let x = 0; x < W; x++) { if (w.road[x] === HIGHWAY || w.road[(H - 1) * W + x] === HIGHWAY) hwyOut = true; }
+    for (let y = 0; y < H; y++) { if (w.road[y * W] === HIGHWAY || w.road[y * W + W - 1] === HIGHWAY) hwyOut = true; }
+    w.stats.hwyOut = hwyOut; w.stats.railPax = pax; w.stats.railFreight = freight; w.stats.busDepot = depot;
+  }
+
   // ---------- Maps ----------
   stamp(map, cx, cy, r, strength, additive) {
     const w = this.w;
@@ -226,12 +276,17 @@ export class Sim {
   updateMaps() {
     const w = this.w; const { n } = w;
     // Coverage
-    for (const k of ['covPolice', 'covFire', 'covHealth', 'covEdu', 'covPark']) w[k].fill(0);
+    for (const k of ['covPolice', 'covFire', 'covHealth', 'covEdu', 'covPark', 'covTransit']) w[k].fill(0);
     const covKey = { police: 'covPolice', fire: 'covFire', health: 'covHealth', edu: 'covEdu', park: 'covPark' };
     for (const b of w.buildings.values()) {
       const d = b.def; if (!d || !d.cov) continue;
       const fund = clamp(w.funding[d.dept] / 100, 0, 1.2);
       const isPark = d.cov === 'park';
+      if (d.cov === 'transit') {
+        if (!b.active) continue;
+        this.stamp(w.covTransit, b.x + b.w / 2, b.y + b.h / 2, d.r * (0.7 + 0.3 * fund), 255 * Math.min(1, fund), false);
+        continue;
+      }
       if (!isPark && (!b.powered || (b._roadDist ?? 0) > 2)) continue;
       const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
       if (isPark) this.stamp(w.covPark, cx, cy, d.r * (0.7 + 0.3 * fund), (d.lv || 30) * 1.6 * Math.min(1, fund + 0.2), true);
@@ -245,7 +300,8 @@ export class Sim {
       const [d, bi] = this.bRoadDist(b);
       if (d > 3 || bi < 0) continue;
       const ri = this.nearRoad[bi]; if (ri < 0) continue;
-      const trips = b.zt === 1 ? b.pop * 0.45 : b.jobs * 0.5;
+      const share = w.covTransit[bi] / 255 * 0.5;
+      const trips = (b.zt === 1 ? b.pop * 0.45 : b.jobs * 0.5) * (1 - share);
       tr[ri] += trips; outsideTrips += trips;
     }
     const roadFund = clamp(w.funding.roads / 100, 0.3, 1.2);
@@ -266,7 +322,7 @@ export class Sim {
     let tSum = 0, tCnt = 0;
     for (let i = 0; i < n; i++) {
       if (!w.road[i]) { w.traffic[i] = 0; continue; }
-      const v = clamp(tr[i] * 1.6 / roadFund + 6, 0, 255);
+      const v = clamp(tr[i] * 1.6 / roadFund / (w.road[i] === HIGHWAY ? 2.6 : 1) + 6, 0, 255);
       w.traffic[i] = v; tSum += v; tCnt++;
     }
     w.stats.trafficAvg = tCnt ? tSum / tCnt : 0;
@@ -312,7 +368,8 @@ export class Sim {
     for (let i = 0; i < n; i++) {
       if (w.terrain[i] === T_WATER) { w.landValue[i] = 0; continue; }
       const wd = w.waterDist[i];
-      let v = 55 + (wd <= 5 ? (6 - wd) * 11 : 0) + w.covPark[i] * 0.55 + w.tree[i] * 6
+      const hx = i % w.w, hy = (i / w.w) | 0;
+      let v = 55 + (wd <= 5 ? (6 - wd) * 11 : 0) + w.covPark[i] * 0.55 + w.tree[i] * 6 + Math.min(30, w.tileAvgH(hx, hy) * 2.5) + w.covTransit[i] * 0.07
         + (w.covPolice[i] + w.covHealth[i] + w.covEdu[i] + w.covFire[i]) * 0.045
         - w.pollution[i] * 0.75 - w.crime[i] * 0.3;
       const ri = this.nearRoad[i];
@@ -475,7 +532,7 @@ export class Sim {
   // ---------- Stats / demand ----------
   updateStats() {
     const w = this.w; const s = w.stats;
-    let pop = 0, jobsC = 0, jobsI = 0, eduW = 0, healthW = 0, resTiles = 0;
+    let pop = 0, jobsC = 0, jobsI = 0, eduW = 0, healthW = 0, resTiles = 0, riders = 0;
     let hasPolice = 0, hasFire = 0;
     this.bList.length = 0;
     let happyBonus = 0;
@@ -487,6 +544,7 @@ export class Sim {
         if (b.zt === 1) {
           b.pop = Math.round(cap); b.jobs = 0; pop += b.pop;
           const i = w.idx(b.x, b.y); eduW += w.covEdu[i] * b.pop; healthW += w.covHealth[i] * b.pop; resTiles++;
+          riders += b.pop * w.covTransit[i] / 255 * 0.45;
         } else { b.jobs = Math.round(cap); b.pop = 0; if (b.zt === 2) jobsC += b.jobs; else jobsI += b.jobs; }
       } else if (b.def) {
         if (b.def.happy && b.powered !== false) happyBonus += b.def.happy;
@@ -494,7 +552,7 @@ export class Sim {
         if (b.def.cov === 'fire') hasFire++;
       }
     }
-    s.pop = pop; s.jobsC = jobsC; s.jobsI = jobsI;
+    s.pop = pop; s.jobsC = jobsC; s.jobsI = jobsI; s.riders = Math.round(riders);
     s.edu = pop ? eduW / pop / 255 : 0;
     s.health = pop ? healthW / pop / 255 : 0;
     const labour = pop * 0.55;
@@ -514,11 +572,11 @@ export class Sim {
 
     // Demand
     const ext = s.outside ? 1 : 0.3;
-    const rTarget = jobs / 0.55 * 1.04 + 140 * ext;
+    const rTarget = jobs / 0.55 * 1.04 + 140 * ext + (s.hwyOut ? 220 : 0) + (s.railPax ? 160 : 0);
     let rD = (rTarget - pop) / Math.max(rTarget, 120);
-    const cTarget = pop * 0.21 * (1 + s.edu * 0.7) + 25 * ext;
+    const cTarget = pop * 0.21 * (1 + s.edu * 0.7) + 25 * ext + (s.hwyOut ? 40 : 0) + (s.railPax ? 30 : 0);
     let cD = (cTarget - jobsC) / Math.max(cTarget, 40);
-    const iTarget = pop * 0.34 * (1 - s.edu * 0.35) + 70 * ext;
+    const iTarget = pop * 0.34 * (1 - s.edu * 0.35) + 70 * ext + (s.hwyOut ? 80 : 0) + (s.railFreight ? 160 + pop * 0.05 : 0);
     let iD = (iTarget - jobsI) / Math.max(iTarget, 60);
     rD -= (w.taxes[1] - 9) * 0.045; cD -= (w.taxes[2] - 9) * 0.045; iD -= (w.taxes[3] - 9) * 0.045;
     rD += (s.approval - 55) / 250;
@@ -542,9 +600,7 @@ export class Sim {
     const taxR = s.pop * w.taxes[1] * 0.1;
     const taxC = s.jobsC * w.taxes[2] * 0.11;
     const taxI = s.jobsI * w.taxes[3] * 0.1;
-    let roads = 0; for (let i = 0; i < w.n; i++) if (w.road[i]) roads += w.terrain[i] === T_WATER ? 2.2 : 0.55;
-    let plines = 0; for (let i = 0; i < w.n; i++) if (w.pline[i]) plines += 0.1;
-    const exp = { roads: roads * w.funding.roads / 100, police: 0, fire: 0, health: 0, edu: 0, parks: 0, utilities: plines };
+    const exp = this.infraCosts();
     for (const b of w.buildings.values()) {
       if (!b.def) continue;
       exp[b.def.dept] += b.def.upkeep * w.funding[b.def.dept] / 100;
@@ -567,12 +623,20 @@ export class Sim {
     w.emit('month', {});
   }
 
+  infraCosts() {
+    const w = this.w; let roads = 0, plines = 0, rails = 0;
+    for (let i = 0; i < w.n; i++) {
+      if (w.road[i]) roads += (w.road[i] === HIGHWAY ? 1.5 : 0.55) * (w.terrain[i] === T_WATER ? 4 : 1);
+      if (w.rail[i]) rails += w.terrain[i] === T_WATER ? 1.6 : 0.4;
+      if (w.pline[i]) plines += 0.1;
+    }
+    return { roads: roads * w.funding.roads / 100, transit: rails * w.funding.transit / 100, police: 0, fire: 0, health: 0, edu: 0, parks: 0, utilities: plines };
+  }
+
   projectedMonth() {
     const w = this.w; const s = w.stats;
     const taxR = s.pop * w.taxes[1] * 0.1, taxC = s.jobsC * w.taxes[2] * 0.11, taxI = s.jobsI * w.taxes[3] * 0.1;
-    let roads = 0, plines = 0;
-    for (let i = 0; i < w.n; i++) { if (w.road[i]) roads += w.terrain[i] === T_WATER ? 2.2 : 0.55; if (w.pline[i]) plines += 0.1; }
-    const exp = { roads: roads * w.funding.roads / 100, police: 0, fire: 0, health: 0, edu: 0, parks: 0, utilities: plines };
+    const exp = this.infraCosts();
     for (const b of w.buildings.values()) if (b.def) exp[b.def.dept] += b.def.upkeep * w.funding[b.def.dept] / 100;
     let loans = 0; for (const l of w.loans) loans += l.payment;
     return { taxR, taxC, taxI, exp, loans };
@@ -607,7 +671,12 @@ export class Sim {
     if (w.demand[1] > 0.5 && zoneCount[1] - this.countBuilt(1) < 6) a.push({ who: 'Planning', tone: 'info', text: 'Strong demand for housing. Zone more residential land.' });
     if (w.demand[2] > 0.5 && zoneCount[2] - this.countBuilt(2) < 4) a.push({ who: 'Planning', tone: 'info', text: 'Shops are in demand. Zone more commercial land.' });
     if (w.demand[3] > 0.5 && zoneCount[3] - this.countBuilt(3) < 4) a.push({ who: 'Planning', tone: 'info', text: 'Industry wants to move in. Zone more industrial land.' });
-    if (s.trafficAvg > 140) a.push({ who: 'Transport', tone: 'warn', text: 'Streets are congested. Add parallel roads and more connections.' });
+    if (s.trafficAvg > 140) a.push({ who: 'Transport', tone: 'warn', text: 'Streets are congested. Add bus stops, rail or a highway.' });
+    const bt = [...w.buildings.values()];
+    if (bt.some((b) => b.kind === 'busstop') && !s.busDepot) a.push({ who: 'Transport', tone: 'warn', text: 'Bus stops need a working bus depot next to a road.' });
+    if (bt.some((b) => b.kind === 'station' && !b.active)) a.push({ who: 'Transport', tone: 'warn', text: 'A train station is idle. Link its line to another station or to the map edge.' });
+    if (bt.some((b) => b.kind === 'freight' && !b.active)) a.push({ who: 'Transport', tone: 'warn', text: 'The freight yard needs a railway that reaches the map edge.' });
+    if (s.pop > 3000 && !s.hwyOut) a.push({ who: 'Transport', tone: 'info', text: 'A highway to the map edge would bring more commuters and trade.' });
     if (w.funds < 0) a.push({ who: 'Finance', tone: 'bad', text: 'The treasury is in the red. Raise taxes, cut budgets or take a loan.' });
     const avgTax = (w.taxes[1] + w.taxes[2] + w.taxes[3]) / 3;
     if (avgTax > 13) a.push({ who: 'Finance', tone: 'warn', text: 'High taxes are driving people away.' });

@@ -24,6 +24,9 @@ export const TIER_NAMES = {
 
 export const ROAD_COST = 10;
 export const BRIDGE_COST = 60;
+export const HIGHWAY_COST = 45;
+export const RAIL_COST = 25;
+export const RAIL_BRIDGE_COST = 90;
 export const PLINE_COST = 5;
 export const TREE_COST = 4;
 export const DEMOLISH_COST = 5;
@@ -31,6 +34,7 @@ export const DEMOLISH_COST = 5;
 export const CATS = [
   { id: 'power', name: 'Power' },
   { id: 'water', name: 'Water' },
+  { id: 'transit', name: 'Transit' },
   { id: 'safety', name: 'Safety' },
   { id: 'health', name: 'Health' },
   { id: 'edu', name: 'Education' },
@@ -59,6 +63,14 @@ export const BUILDINGS = {
   treatment: { name: 'Water Works', cat: 'water', size: 3, cost: 7500, upkeep: 160, water: 3400, unlock: 3, needsWater: true, dept: 'utilities',
                desc: 'Large intake and filtration plant on the waterfront.' },
 
+  busstop:   { name: 'Bus Stop', cat: 'transit', size: 1, cost: 150, upkeep: 6, cov: 'transit', r: 6, unlock: 1, needsRoad: true, dept: 'transit',
+               desc: 'Needs a bus depot in the city. Takes cars off nearby streets.' },
+  busdepot:  { name: 'Bus Depot', cat: 'transit', size: 2, cost: 2800, upkeep: 90, unlock: 1, needsRoad: true, dept: 'transit', unique: false,
+               desc: 'Runs the bus network. Bus stops only work once you have one.' },
+  station:   { name: 'Train Station', cat: 'transit', size: 2, cost: 4200, upkeep: 110, cov: 'transit', r: 11, unlock: 2, needsRail: true, dept: 'transit',
+               desc: 'Must touch a railway. Works when its line reaches another station or the map edge.' },
+  freight:   { name: 'Freight Yard', cat: 'transit', size: 3, cost: 6000, upkeep: 130, unlock: 3, needsRail: true, dept: 'transit',
+               desc: 'Ships goods by rail. Boosts industrial demand when the line reaches the map edge.' },
   police:    { name: 'Police Station', cat: 'safety', size: 2, cost: 1200, upkeep: 55, cov: 'police', r: 15, unlock: 0, dept: 'police',
                desc: 'Patrols reduce crime in the surrounding blocks.' },
   policehq:  { name: 'Police Headquarters', cat: 'safety', size: 3, cost: 5200, upkeep: 190, cov: 'police', r: 27, unlock: 3, dept: 'police',
@@ -122,6 +134,7 @@ export const MILESTONES = [
 
 export const DEPTS = [
   { id: 'roads', name: 'Roads' },
+  { id: 'transit', name: 'Public transport' },
   { id: 'police', name: 'Police' },
   { id: 'fire', name: 'Fire' },
   { id: 'health', name: 'Health' },
@@ -143,6 +156,8 @@ export const MAP_TYPES = {
   bay:     { name: 'Bay', desc: 'A sheltered bay wraps around the land.' },
   plains:  { name: 'Open Plains', desc: 'Wide flat land, a single creek.' },
 };
+
+export const HILLS = { flat: 'Flat', rolling: 'Rolling hills', mountains: 'Mountains' };
 
 export const MAP_SIZES = { small: 72, medium: 100, large: 128 };
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

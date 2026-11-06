@@ -5,7 +5,7 @@ import { Renderer } from './render/renderer.js';
 import { buildDemoCity, drawMapPreview } from './demo.js';
 import { icon } from './ui/icons.js';
 import { LOGO, dateStr, fmt, money } from './ui/hud.js';
-import { MAP_TYPES, MAP_SIZES, DIFFICULTY, MILESTONES } from './data/defs.js';
+import { MAP_TYPES, MAP_SIZES, DIFFICULTY, MILESTONES, HILLS } from './data/defs.js';
 import { cityName } from './util/rng.js';
 import * as store from './storage.js';
 import { sfx, setSound, unlock } from './audio.js';
@@ -90,12 +90,13 @@ const SCREENS = {
   },
 
   new() {
-    const st = { name: cityName(), type: 'river', size: 'medium', diff: 'normal', seed: (Math.random() * 1e9) | 0 };
+    const st = { name: cityName(), type: 'river', size: 'medium', diff: 'normal', hills: 'rolling', seed: (Math.random() * 1e9) | 0 };
     return {
       html: `<div class="sh"><button data-back aria-label="Back">${icon('back')}</button><h2>Found a new city</h2></div>
         <div class="field"><span class="cap">City name</span><div class="namebox"><input id="nm" maxlength="28" value="${esc(st.name)}" autocomplete="off" spellcheck="false"><button id="nmDice" aria-label="Random name">${icon('dice')}</button></div></div>
         <div class="field"><span class="cap">Terrain</span><div class="types" id="types">${Object.entries(MAP_TYPES).map(([k, v]) => `<button data-t="${k}" class="${k === st.type ? 'on' : ''}">${v.name}</button>`).join('')}</div></div>
         <div class="preview"><canvas id="pv" width="760" height="380"></canvas><div class="pd" id="pd"></div><button class="reroll" id="reroll">${icon('dice')}New land</button></div>
+        <div class="field"><span class="cap">Landscape</span><div class="seg full" id="hl">${Object.entries(HILLS).map(([k, v]) => `<button data-v="${k}" class="${k === st.hills ? 'on' : ''}">${v}</button>`).join('')}</div></div>
         <div class="field"><span class="cap">Map size</span><div class="seg full" id="sz">${Object.entries(MAP_SIZES).map(([k, v]) => `<button data-v="${k}" class="${k === st.size ? 'on' : ''}">${k[0].toUpperCase() + k.slice(1)} · ${v}²</button>`).join('')}</div></div>
         <div class="field"><span class="cap">Starting budget</span><div class="seg full" id="df">${Object.entries(DIFFICULTY).map(([k, v]) => `<button data-v="${k}" class="${k === st.diff ? 'on' : ''}">${v.name}<br><small style="font-weight:500;opacity:.75">${money(v.funds)}</small></button>`).join('')}</div></div>
         <button class="found" id="found">${icon('landmark')}Found ${esc(st.name)}</button>`,
@@ -103,7 +104,7 @@ const SCREENS = {
         let world = null;
         const regen = () => {
           world = new World(MAP_SIZES[st.size], MAP_SIZES[st.size]);
-          world.generate({ seed: st.seed, mapType: st.type, difficulty: st.diff, name: st.name });
+          world.generate({ seed: st.seed, mapType: st.type, difficulty: st.diff, name: st.name, hills: st.hills });
           drawMapPreview(world, $('#pv', el));
           $('#pd', el).textContent = MAP_TYPES[st.type].desc;
         };
@@ -114,7 +115,7 @@ const SCREENS = {
         $('#reroll', el).onclick = () => { st.seed = (Math.random() * 1e9) | 0; regen(); sfx.tap(); };
         el.querySelectorAll('#types button').forEach((b) => b.onclick = () => { st.type = b.dataset.t; el.querySelectorAll('#types button').forEach((x) => x.classList.toggle('on', x === b)); regen(); sfx.tap(); });
         const seg = (id, key, re) => el.querySelectorAll(`#${id} button`).forEach((b) => b.onclick = () => { st[key] = b.dataset.v; el.querySelectorAll(`#${id} button`).forEach((x) => x.classList.toggle('on', x === b)); if (re) regen(); sfx.tap(); });
-        seg('sz', 'size', true); seg('df', 'diff', false);
+        seg('sz', 'size', true); seg('df', 'diff', false); seg('hl', 'hills', true);
         $('#found', el).onclick = async () => {
           unlock(); sfx.build();
           world.name = st.name || 'Unnamed';

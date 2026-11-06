@@ -2,13 +2,15 @@
 import { mulberry32, fbm, hash2 } from '../util/rng.js';
 import {
   BUILDINGS, ZONE_COST, ROAD_COST, BRIDGE_COST, PLINE_COST, TREE_COST, DEMOLISH_COST,
-  DIFFICULTY, DENSITY_TIERS,
+  DIFFICULTY, DENSITY_TIERS, HIGHWAY_COST, RAIL_COST, RAIL_BRIDGE_COST,
 } from '../data/defs.js';
 
 export const T_GRASS = 0, T_WATER = 1, T_SAND = 2;
-const LAYERS_U8 = ['terrain', 'tree', 'road', 'pline', 'zoneT', 'zoneD', 'deco'];
+const LAYERS_U8 = ['terrain', 'tree', 'road', 'pline', 'zoneT', 'zoneD', 'deco', 'rail'];
+export const ZSTEP = 8; // world px per height level
+export const ROAD = 1, HIGHWAY = 2;
 const MAPS_U8 = ['power', 'water', 'pollution', 'landValue', 'crime', 'traffic',
-  'covPolice', 'covFire', 'covHealth', 'covEdu', 'covPark', 'roadDist', 'waterDist'];
+  'covPolice', 'covFire', 'covHealth', 'covEdu', 'covPark', 'covTransit', 'roadDist', 'waterDist'];
 
 export class World {
   constructor(w, h) {
@@ -16,13 +18,16 @@ export class World {
     for (const k of LAYERS_U8) this[k] = new Uint8Array(this.n);
     for (const k of MAPS_U8) this[k] = new Uint8Array(this.n);
     this.bld = new Int32Array(this.n);
+    this.height = new Uint8Array((w + 1) * (h + 1)); // corner heightmap
+    this.maxH = 0;
+    this.hills = 'rolling';
     this.roadComp = new Int32Array(this.n);
     this.buildings = new Map();
     this.nextId = 1;
     this.funds = 25000;
     this.day = 0; // days since founding
     this.taxes = { 1: 9, 2: 9, 3: 9 };
-    this.funding = { roads: 100, police: 100, fire: 100, health: 100, edu: 100, parks: 100, utilities: 100 };
+    this.funding = { roads: 100, transit: 100, police: 100, fire: 100, health: 100, edu: 100, parks: 100, utilities: 100 };
     this.loans = [];
     this.history = []; // monthly {pop, funds, income, expense, jobs}
     this.ledger = { income: 0, expense: 0, build: 0, lastIncome: 0, lastExpense: 0, lastBuild: 0, lastBreakdown: null };
@@ -50,7 +55,8 @@ export class World {
 
   // ---------- Terrain ----------
   generate(opts) {
-    const { seed = 1, mapType = 'river', difficulty = 'normal', name } = opts;
+    const { seed = 1, mapType = 'river', difficulty = 'normal', name, hills = 'rolling' } = opts;
+    this.hills = hills;
     this.seed = seed; this.mapType = mapType; this.difficulty = difficulty;
     const diff = DIFFICULTY[difficulty] || DIFFICULTY.normal;
     this.funds = diff.funds; this.costMul = diff.costMul;
@@ -110,7 +116,12 @@ export class World {
       const d = hash2(x, y, seed + 11);
       this.deco[i] = d < 0.05 ? 1 : d < 0.09 ? 2 : 0;
     }
-    // ensure central area is land-ish so the player has room
+    this.generateHeights(seed, mapType, hills);
+    // trees prefer hillsides
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x; if (this.terrain[i] !== T_GRASS || this.tree[i]) continue;
+      if (this.tileAvgH(x, y) >= 5 && hash2(x, y, seed + 31) < 0.35) this.tree[i] = 1 + ((hash2(x, y, seed + 32) * 3) | 0);
+    }
     this.dirty.version++;
   }
 
@@ -178,10 +189,144 @@ export class World {
     }
   }
 
+  // ---------- Heights ----------
+  hIdx(x, y) { return y * (this.w + 1) + x; }
+  ch(x, y) { return this.height[y * (this.w + 1) + x]; }
+  // corners: T=(x,y) R=(x+1,y) B=(x+1,y+1) L=(x,y+1)
+  tileCorners(x, y) { const W = this.w + 1, i = y * W + x, H = this.height; return [H[i], H[i + 1], H[i + W + 1], H[i + W]]; }
+  tileMinH(x, y) { const c = this.tileCorners(x, y); return Math.min(c[0], c[1], c[2], c[3]); }
+  tileMaxH(x, y) { const c = this.tileCorners(x, y); return Math.max(c[0], c[1], c[2], c[3]); }
+  tileAvgH(x, y) { const c = this.tileCorners(x, y); return (c[0] + c[1] + c[2] + c[3]) / 4; }
+  areaMaxH(x, y, w, h) { let m = 0; for (let yy = y; yy <= y + h; yy++) for (let xx = x; xx <= x + w; xx++) m = Math.max(m, this.ch(xx, yy)); return m; }
+  areaMinH(x, y, w, h) { let m = 255; for (let yy = y; yy <= y + h; yy++) for (let xx = x; xx <= x + w; xx++) m = Math.min(m, this.ch(xx, yy)); return m; }
+  // bilinear height at fractional tile position
+  heightAt(fx, fy) {
+    const x = Math.max(0, Math.min(this.w - 1, Math.floor(fx))), y = Math.max(0, Math.min(this.h - 1, Math.floor(fy)));
+    const u = Math.max(0, Math.min(1, fx - x)), v = Math.max(0, Math.min(1, fy - y));
+    const [t, r, b, l] = this.tileCorners(x, y);
+    return (t * (1 - u) + r * u) * (1 - v) + (l * (1 - u) + b * u) * v;
+  }
+  cornerTouchesWater(cx, cy) {
+    for (const [dx, dy] of [[-1, -1], [0, -1], [-1, 0], [0, 0]]) if (this.isWater(cx + dx, cy + dy)) return true;
+    return false;
+  }
+
+  generateHeights(seed, mapType, hills) {
+    const W = this.w + 1, H = this.h + 1; const hm = this.height;
+    const amp = { flat: 0, rolling: 6, mountains: 13 }[hills] ?? 6;
+    const typeMul = { plains: 0.55, river: 0.9, coast: 1, lakes: 1.15, bay: 1.1 }[mapType] ?? 1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      let v = fbm(x / 26 + 300, y / 26 - 120, seed + 200, 4);
+      const ridge = 1 - Math.abs(fbm(x / 40, y / 40, seed + 410, 3) * 2 - 1);
+      v = Math.max(0, v - 0.32) / 0.68 * 0.75 + Math.max(0, ridge - 0.55) * 0.9;
+      hm[y * W + x] = this.cornerTouchesWater(x, y) ? 0 : Math.max(0, Math.min(15, Math.round(v * amp * typeMul * 1.5)));
+    }
+    this.relaxHeights();
+  }
+
+  // enforce |dh| <= 1 between neighbouring corners (keeps lows, cuts peaks)
+  relaxHeights() {
+    const W = this.w + 1, H = this.h + 1; const hm = this.height;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x; let v = hm[i];
+      if (x > 0) v = Math.min(v, hm[i - 1] + 1); if (y > 0) v = Math.min(v, hm[i - W] + 1); hm[i] = v;
+    }
+    for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) {
+      const i = y * W + x; let v = hm[i];
+      if (x < W - 1) v = Math.min(v, hm[i + 1] + 1); if (y < H - 1) v = Math.min(v, hm[i + W] + 1); hm[i] = v;
+    }
+    let m = 0; for (let i = 0; i < hm.length; i++) if (hm[i] > m) m = hm[i];
+    this.maxH = m;
+  }
+
+  // Terraform planning. targets: Map(cornerIndex -> height). Returns plan with cost or a reason.
+  planTerraform(targets) {
+    const W = this.w + 1, H = this.h + 1; const hm = this.height;
+    const nh = new Map();
+    const get = (i) => (nh.has(i) ? nh.get(i) : hm[i]);
+    const q = [];
+    for (const [i, v] of targets) {
+      const x = i % W, y = (i / W) | 0;
+      if (v === hm[i]) continue;
+      if (v > 15 || v < 0) return { ok: false, reason: 'Height limit reached' };
+      if (this.cornerTouchesWater(x, y)) continue; // shorelines stay at water level
+      nh.set(i, v); q.push(i);
+    }
+    while (q.length) {
+      const i = q.pop(); const v = nh.get(i); const x = i % W, y = (i / W) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+        const j = yy * W + xx; const hv = get(j);
+        let t = hv;
+        if (hv < v - 1) t = v - 1; else if (hv > v + 1) t = v + 1;
+        if (t !== hv) {
+          if (this.cornerTouchesWater(xx, yy)) return { ok: false, reason: 'Too close to water' };
+          nh.set(j, t); q.push(j);
+          if (nh.size > 6000) return { ok: false, reason: 'Area too large' };
+        }
+      }
+    }
+    if (!nh.size) return { ok: false, reason: 'Nothing to change' };
+    // affected tiles
+    const tiles = new Set(); let levels = 0;
+    for (const [i, v] of nh) {
+      levels += Math.abs(v - hm[i]);
+      const x = i % W, y = (i / W) | 0;
+      for (const [dx, dy] of [[-1, -1], [0, -1], [-1, 0], [0, 0]]) if (this.inb(x + dx, y + dy)) tiles.add(this.idx(x + dx, y + dy));
+    }
+    const demolish = new Set(); let demoCost = 0;
+    for (const t of tiles) {
+      const x = t % this.w, y = (t / this.w) | 0;
+      if (this.terrain[t] === T_WATER) return { ok: false, reason: 'Cannot reshape water' };
+      const b = this.bld[t] ? this.buildings.get(this.bld[t]) : null;
+      if (b) {
+        if (b.kind === 'zone' || b.kind === 'rubble') { if (!demolish.has(b.id)) { demolish.add(b.id); demoCost += DEMOLISH_COST * b.w * b.h; } }
+        else return { ok: false, reason: 'A building is in the way' };
+      }
+      if (this.road[t] || this.rail[t]) {
+        const W1 = W, i0 = y * W1 + x;
+        const c = [i0, i0 + 1, i0 + W1 + 1, i0 + W1].map(get);
+        if (Math.max(...c) - Math.min(...c) > 1) return { ok: false, reason: 'Too steep for the road or track' };
+      }
+    }
+    const cost = this.cost(levels * 20) + demoCost;
+    if (!this.canAfford(cost)) return { ok: false, reason: 'Not enough funds', cost };
+    return { ok: true, cost, nh, tiles, demolish };
+  }
+
+  applyTerraform(plan) {
+    for (const id of plan.demolish) this.removeBuilding(this.buildings.get(id), true);
+    for (const [i, v] of plan.nh) this.height[i] = v;
+    for (const t of plan.tiles) { const x = t % this.w, y = (t / this.w) | 0; this.touchAround(x, y); }
+    let m = 0; for (let i = 0; i < this.height.length; i++) if (this.height[i] > m) m = this.height[i];
+    this.maxH = m;
+    this.spend(plan.cost);
+    return plan.cost;
+  }
+
+  terraformTargets(kind, x0, y0, x1, y1, level) {
+    const W = this.w + 1; const t = new Map();
+    const ax = Math.min(x0, x1), bx = Math.max(x0, x1), ay = Math.min(y0, y1), by = Math.max(y0, y1);
+    for (let y = ay; y <= by + 1; y++) for (let x = ax; x <= bx + 1; x++) {
+      if (x < 0 || y < 0 || x > this.w || y > this.h) continue;
+      const i = y * W + x; const h = this.height[i];
+      t.set(i, kind === 'raise' ? h + 1 : kind === 'lower' ? Math.max(0, h - 1) : level);
+    }
+    return t;
+  }
+
   // ---------- Queries ----------
   isWater(x, y) { return this.inb(x, y) && this.terrain[this.idx(x, y)] === T_WATER; }
   buildingAt(x, y) { if (!this.inb(x, y)) return null; const id = this.bld[this.idx(x, y)]; return id ? this.buildings.get(id) : null; }
-  roadAt(x, y) { return this.inb(x, y) && this.road[this.idx(x, y)] === 1; }
+  roadAt(x, y) { return this.inb(x, y) && this.road[this.idx(x, y)] > 0; }
+  railAt(x, y) { return this.inb(x, y) && this.rail[this.idx(x, y)] > 0; }
+  railMask(x, y) {
+    return (this.railAt(x, y - 1) ? 1 : 0) | (this.railAt(x + 1, y) ? 2 : 0) | (this.railAt(x, y + 1) ? 4 : 0) | (this.railAt(x - 1, y) ? 8 : 0);
+  }
+  hwyMask(x, y) {
+    const h = (xx, yy) => this.inb(xx, yy) && this.road[this.idx(xx, yy)] === HIGHWAY;
+    return (h(x, y - 1) ? 1 : 0) | (h(x + 1, y) ? 2 : 0) | (h(x, y + 1) ? 4 : 0) | (h(x - 1, y) ? 8 : 0);
+  }
   plineAt(x, y) { return this.inb(x, y) && this.pline[this.idx(x, y)] === 1; }
 
   roadMask(x, y) {
@@ -208,6 +353,7 @@ export class World {
       const i = this.idx(xx, yy);
       if (this.terrain[i] === T_WATER) return { ok: false, reason: 'Cannot build on water' };
       if (this.road[i]) return { ok: false, reason: 'Road in the way' };
+      if (this.rail[i]) return { ok: false, reason: 'Railway in the way' };
       if (this.bld[i]) {
         const b = this.buildings.get(this.bld[i]);
         if (b && b.kind === 'zone' || b && b.kind === 'rubble') clearCost += DEMOLISH_COST;
@@ -218,6 +364,17 @@ export class World {
       for (const [xx, yy] of [[x + k, y - 1], [x + k, y + s], [x - 1, y + k], [x + s, y + k]]) if (this.isWater(xx, yy)) nearWater = true;
     }
     if (def.needsWater && !nearWater) return { ok: false, reason: 'Must be built next to water' };
+    if (this.areaMaxH(x, y, s, s) - this.areaMinH(x, y, s, s) > 3) return { ok: false, reason: 'Ground too steep — level it first' };
+    if (def.needsRail) {
+      let rail = false;
+      for (let k = -1; k <= s; k++) for (const [xx, yy] of [[x + k, y - 1], [x + k, y + s], [x - 1, y + k], [x + s, y + k]]) if (this.railAt(xx, yy)) rail = true;
+      if (!rail) return { ok: false, reason: 'Must be built next to a railway' };
+    }
+    if (def.needsRoad) {
+      let road = false;
+      for (let k = -1; k <= s; k++) for (const [xx, yy] of [[x + k, y - 1], [x + k, y + s], [x - 1, y + k], [x + s, y + k]]) if (this.roadAt(xx, yy)) road = true;
+      if (!road) return { ok: false, reason: 'Must be built next to a road' };
+    }
     if (def.unique) for (const b of this.buildings.values()) if (b.kind === key) return { ok: false, reason: 'Only one allowed' };
     const cost = this.cost(def.cost) + clearCost;
     if (!this.canAfford(cost)) return { ok: false, reason: 'Not enough funds', cost };
@@ -260,29 +417,56 @@ export class World {
     if (!silent) this.emit('demolished', { x: b.x, y: b.y });
   }
 
-  // Road: returns cost or -1 if not placeable
-  roadCost(x, y) {
+  steep(x, y) { return this.tileMaxH(x, y) - this.tileMinH(x, y) > 1; }
+
+  // Road (type 1) or highway (type 2): returns cost, 0 if nothing to do, -1 if not placeable
+  roadCost(x, y, type = ROAD) {
     if (!this.inb(x, y)) return -1;
     const i = this.idx(x, y);
-    if (this.road[i]) return 0;
+    if (this.road[i] >= type) return 0;
     const b = this.bld[i] ? this.buildings.get(this.bld[i]) : null;
     if (b && b.kind !== 'zone' && b.kind !== 'rubble') return -1;
-    if (this.terrain[i] === T_WATER) {
-      // bridges cannot start next to existing perpendicular bridges in a messy way; keep simple
-      return this.cost(BRIDGE_COST);
-    }
-    return this.cost(ROAD_COST) + (b ? DEMOLISH_COST : 0) + (this.tree[i] ? 2 : 0);
+    if (this.steep(x, y)) return -1;
+    const water = this.terrain[i] === T_WATER;
+    if (type === HIGHWAY && this.rail[i]) return -1;
+    let c = type === HIGHWAY ? (water ? BRIDGE_COST * 2.5 : HIGHWAY_COST) : (water ? BRIDGE_COST : ROAD_COST);
+    if (this.road[i]) c -= ROAD_COST;
+    return this.cost(c) + (b ? DEMOLISH_COST : 0) + (this.tree[i] ? 2 : 0);
   }
-  buildRoad(x, y) {
-    const c = this.roadCost(x, y);
+  buildRoad(x, y, type = ROAD) {
+    const c = this.roadCost(x, y, type);
     if (c <= 0) return 0;
     if (!this.canAfford(c)) return -1;
     const i = this.idx(x, y);
     if (this.bld[i]) this.removeBuilding(this.buildings.get(this.bld[i]), true);
-    this.road[i] = 1; this.tree[i] = 0; this.zoneT[i] = 0; this.zoneD[i] = 0;
+    this.road[i] = type; this.tree[i] = 0; this.zoneT[i] = 0; this.zoneD[i] = 0;
+    if (type === HIGHWAY) this.pline[i] = 0;
     this.spend(c); this.touchAround(x, y);
     return c;
   }
+
+  railCost(x, y) {
+    if (!this.inb(x, y)) return -1;
+    const i = this.idx(x, y);
+    if (this.rail[i]) return 0;
+    if (this.road[i] === HIGHWAY) return -1;
+    const b = this.bld[i] ? this.buildings.get(this.bld[i]) : null;
+    if (b && b.kind !== 'zone' && b.kind !== 'rubble') return -1;
+    if (this.steep(x, y)) return -1;
+    const c = this.terrain[i] === T_WATER ? RAIL_BRIDGE_COST : RAIL_COST;
+    return this.cost(c) + (b ? DEMOLISH_COST : 0) + (this.tree[i] ? 2 : 0);
+  }
+  buildRail(x, y) {
+    const c = this.railCost(x, y);
+    if (c <= 0) return 0;
+    if (!this.canAfford(c)) return -1;
+    const i = this.idx(x, y);
+    if (this.bld[i]) this.removeBuilding(this.buildings.get(this.bld[i]), true);
+    this.rail[i] = 1; this.tree[i] = 0; this.zoneT[i] = 0; this.zoneD[i] = 0; this.pline[i] = 0;
+    this.spend(c); this.touchAround(x, y);
+    return c;
+  }
+
   touchAround(x, y) {
     for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (this.inb(x + dx, y + dy)) this.touch(this.idx(x + dx, y + dy));
   }
@@ -291,7 +475,7 @@ export class World {
     if (!this.inb(x, y)) return -1;
     const i = this.idx(x, y);
     if (this.pline[i]) return 0;
-    if (this.terrain[i] === T_WATER) return -1;
+    if (this.terrain[i] === T_WATER || this.rail[i] || this.road[i] === HIGHWAY) return -1;
     if (this.bld[i]) return -1;
     return this.cost(PLINE_COST) + (this.tree[i] ? 2 : 0);
   }
@@ -308,7 +492,7 @@ export class World {
   zoneCost(x, y, zt, zd) {
     if (!this.inb(x, y)) return -1;
     const i = this.idx(x, y);
-    if (this.terrain[i] === T_WATER || this.road[i] || this.pline[i]) return -1;
+    if (this.terrain[i] === T_WATER || this.road[i] || this.pline[i] || this.rail[i]) return -1;
     const b = this.bld[i] ? this.buildings.get(this.bld[i]) : null;
     if (b && b.kind !== 'zone' && b.kind !== 'rubble') return -1;
     if (this.zoneT[i] === zt && this.zoneD[i] === zd) return 0;
@@ -345,7 +529,7 @@ export class World {
     const i = this.idx(x, y);
     const b = this.bld[i] ? this.buildings.get(this.bld[i]) : null;
     if (b) return DEMOLISH_COST * b.w * b.h;
-    if (this.road[i] || this.pline[i]) return 1;
+    if (this.road[i] || this.pline[i] || this.rail[i]) return 1;
     if (this.tree[i]) return 1;
     if (this.zoneT[i]) return 0.0001;
     return -1;
@@ -362,7 +546,8 @@ export class World {
         for (let yy = b.y; yy < b.y + b.h; yy++) for (let xx = b.x; xx < b.x + b.w; xx++) this.touchAround(xx, yy);
       }
       this.removeBuilding(b);
-    } else if (this.road[i]) { this.road[i] = 0; c = 1; this.touchAround(x, y); }
+    } else if (this.rail[i]) { this.rail[i] = 0; c = 1; this.touchAround(x, y); }
+    else if (this.road[i]) { this.road[i] = 0; c = 1; this.touchAround(x, y); }
     else if (this.pline[i]) { this.pline[i] = 0; c = 1; this.touchAround(x, y); }
     else if (this.tree[i]) { this.tree[i] = 0; c = 1; this.touch(i); }
     else if (this.zoneT[i]) { this.zoneT[i] = 0; this.zoneD[i] = 0; this.touch(i); }
@@ -373,7 +558,7 @@ export class World {
   plantCost(x, y) {
     if (!this.inb(x, y)) return -1;
     const i = this.idx(x, y);
-    if (this.terrain[i] === T_WATER || this.road[i] || this.pline[i] || this.bld[i] || this.tree[i] >= 3) return -1;
+    if (this.terrain[i] === T_WATER || this.road[i] || this.rail[i] || this.pline[i] || this.bld[i] || this.tree[i] >= 3) return -1;
     return this.cost(TREE_COST);
   }
   plant(x, y) {
@@ -398,16 +583,17 @@ export class World {
       v: 1, w: this.w, h: this.h, name: this.name, seed: this.seed, mapType: this.mapType, difficulty: this.difficulty,
       costMul: this.costMul, funds: this.funds, day: this.day, taxes: this.taxes, funding: this.funding, loans: this.loans,
       history: this.history, ledger: this.ledger, demand: this.demand, stats: this.stats, milestone: this.milestone,
-      settings: this.settings, nextId: this.nextId, layers, buildings,
+      settings: this.settings, nextId: this.nextId, hills: this.hills, layers: { ...layers, height: this.height }, buildings,
     };
   }
 
   static deserialize(d) {
     const wd = new World(d.w, d.h);
     for (const k of ['name', 'seed', 'mapType', 'difficulty', 'costMul', 'funds', 'day', 'taxes', 'funding', 'loans',
-      'history', 'ledger', 'demand', 'stats', 'milestone', 'settings', 'nextId']) if (d[k] !== undefined) wd[k] = d[k];
-    wd.funding = Object.assign({ roads: 100, police: 100, fire: 100, health: 100, edu: 100, parks: 100, utilities: 100 }, d.funding);
+      'history', 'ledger', 'demand', 'stats', 'milestone', 'settings', 'nextId', 'hills']) if (d[k] !== undefined) wd[k] = d[k];
+    wd.funding = Object.assign({ roads: 100, transit: 100, police: 100, fire: 100, health: 100, edu: 100, parks: 100, utilities: 100 }, d.funding);
     for (const k of LAYERS_U8) if (d.layers[k]) wd[k].set(d.layers[k]);
+    if (d.layers.height && d.layers.height.length === wd.height.length) { wd.height.set(d.layers.height); let m = 0; for (const v of wd.height) if (v > m) m = v; wd.maxH = m; }
     for (const b of d.buildings) {
       b.def = BUILDINGS[b.kind] || null;
       wd.buildings.set(b.id, b);

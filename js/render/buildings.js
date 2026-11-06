@@ -670,6 +670,92 @@ const SERVICES = {
       P.box(1.6, 2.64, 2.8, 2.7, 16, 22, '#3a86d4', { edge: false, ao: false });
     },
   }),
+  busstop: () => ({
+    fw: 1, fd: 1, H: 26, draw(P) {
+      lot(P, 1, 1, PAVE, 0.02);
+      P.ground(0.04, 0.04, 0.96, 0.3, LAWN);
+      // shelter: back wall, roof, bench
+      P.box(0.22, 0.42, 0.78, 0.46, 0, 11, '#8fb3c4', { edge: false, ao: false, left: 'rgba(160,200,215,0.85)', right: '#6f93a4' });
+      P.box(0.2, 0.4, 0.8, 0.66, 11, 12.5, '#3c4a52', { edge: false });
+      P.line3([0.22, 0.64, 0], [0.22, 0.64, 11], '#4a555c', 0.8); P.line3([0.78, 0.64, 0], [0.78, 0.64, 11], '#4a555c', 0.8);
+      P.box(0.3, 0.47, 0.7, 0.55, 3, 4, '#8a6a4a', { edge: false, ao: false });
+      // sign
+      P.line3([0.88, 0.86, 0], [0.88, 0.86, 15], '#4a555c', 0.7);
+      P.box(0.84, 0.84, 0.92, 0.88, 13, 18, '#e0a526', { edge: false, ao: false });
+      P.glowDot(0.5, 0.55, 10, 6, 'rgba(255,230,170,0.85)');
+      P.tree(0.15, 0.15, 3.8, 3, '#5e8f3d');
+    },
+  }),
+  busdepot: (rng) => ({
+    fw: 2, fd: 2, H: 34, draw(P) {
+      lot(P, 2, 2, ASPH);
+      parkingLines(P, 0.1, 1.45, 1.9, 1.95, 'x', 7);
+      P.shadow(0.15, 0.15, 1.85, 1.3, 20);
+      const bx = P.box(0.15, 0.15, 1.85, 1.3, 0, 18, '#c9c6bc');
+      for (let k = 0; k < 4; k++) P.door('L', 1.3, 0.22 + k * 0.41, 0.52 + k * 0.41, 12, '#53595e');
+      P.windows(bx, 'R', { floors: 1, density: 3, base: 9, wf: 0.6, hf: 0.5 });
+      P.poly([[0.15, 0.15, 18], [1.85, 0.15, 18], [1.85, 1.3, 18], [0.15, 1.3, 18]], '#8b9094');
+      for (let k = 0; k < 5; k++) P.box(0.3 + k * 0.34, 0.25, 0.42 + k * 0.34, 1.2, 18, 19.5, '#9fa5a8', { edge: false, ao: false });
+      P.box(0.15, 1.25, 1.85, 1.3, 14, 18, '#e0a526', { edge: false, ao: false, noTop: true });
+      for (let k = 0; k < 4; k++) {
+        const x = 0.35 + k * 0.42;
+        P.box(x - 0.07, 1.48, x + 0.07, 1.88, 0.6, 7, '#e0a526', { edge: false, ao: false });
+        P.box(x - 0.07, 1.48, x + 0.07, 1.88, 3.8, 5.8, '#2e4b5c', { edge: false, ao: false, noTop: true });
+      }
+    },
+  }),
+  station: () => ({
+    fw: 2, fd: 2, H: 50, draw(P) {
+      lot(P, 2, 2, PAVE);
+      // platforms along both axes
+      P.box(0.05, 1.45, 1.95, 1.8, 0, 3, '#c8c1b1', { edge: false });
+      P.line3([0.05, 1.8, 3.01], [1.95, 1.8, 3.01], '#e5c840', 0.8);
+      P.box(1.45, 0.05, 1.8, 1.4, 0, 3, '#c8c1b1', { edge: false });
+      // canopy over platform
+      for (let k = 0; k < 4; k++) P.line3([0.25 + k * 0.48, 1.62, 3], [0.25 + k * 0.48, 1.62, 13], '#4a555c', 0.8);
+      P.box(0.1, 1.48, 1.9, 1.78, 13, 14.5, '#3f5b6b', { edge: false });
+      for (let k = 0; k < 4; k++) P.glowDot(0.25 + k * 0.48, 1.63, 12, 6, 'rgba(255,230,170,0.85)');
+      // station hall with clock tower
+      P.shadow(0.15, 0.15, 1.35, 1.35, 30);
+      const hall = P.house(0.15, 0.15, 1.35, 1.35, 22, 10, '#c98a68', '#4d5761', 'y');
+      P.windows(hall, 'L', { floors: 1, density: 3, base: 3, wf: 0.5, hf: 0.75, sill: true });
+      P.windows(hall, 'R', { floors: 2, density: 3, base: 2, wf: 0.45, hf: 0.6 });
+      P.door('L', 1.35, 0.6, 0.9, 12, '#3f4b52');
+      const t = P.box(0.2, 1.05, 0.48, 1.33, 0, 42, '#c98a68');
+      P.hipRoof(0.2, 1.05, 0.48, 1.33, 42, 6, '#5f8f7d');
+      const [cx, cy] = P.pt(0.34, 1.33, 35); const c = P.c;
+      c.fillStyle = '#f4efe2'; c.beginPath(); c.ellipse(cx, cy, 2.6 * P.s, 3 * P.s, 0, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = '#333'; c.lineWidth = 0.4 * P.s; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx, cy - 2 * P.s); c.moveTo(cx, cy); c.lineTo(cx + 1.5 * P.s, cy); c.stroke();
+      void t;
+    },
+  }),
+  freight: (rng) => ({
+    fw: 3, fd: 3, H: 56, draw(P) {
+      lot(P, 3, 3, '#9e978a');
+      const cols = ['#c4473a', '#2e6e8e', '#3d8758', '#d6a034', '#8a8f94', '#7a4f8a'];
+      for (let r = 0; r < 3; r++) for (let k = 0; k < 4; k++) {
+        const x = 0.25 + k * 0.42, y = 1.55 + r * 0.42;
+        const h = 1 + Math.floor(rng() * 3);
+        for (let z = 0; z < h; z++) {
+          const col = cols[Math.floor(rng() * cols.length)];
+          P.box(x, y, x + 0.36, y + 0.18, z * 5, z * 5 + 5, col, { edge: false, ao: z === 0 });
+        }
+      }
+      P.shadow(0.2, 0.2, 1.9, 1.2, 22);
+      const wh = P.box(0.2, 0.2, 1.9, 1.2, 0, 20, '#a7a39b');
+      for (let k = 0; k < 4; k++) P.door('L', 1.2, 0.28 + k * 0.4, 0.55 + k * 0.4, 12, '#4e5357');
+      P.poly([[0.2, 0.2, 20], [1.9, 0.2, 20], [1.9, 1.2, 20], [0.2, 1.2, 20]], '#878d91');
+      void wh;
+      // gantry crane
+      const yA = 1.45, yB = 2.85;
+      for (const x of [2.15, 2.85]) { P.line3([x, yA, 0], [x, yA, 44], '#d9a62e', 1.4); P.line3([x, yB, 0], [x, yB, 44], '#d9a62e', 1.4); }
+      P.box(2.1, yA - 0.04, 2.9, yA + 0.04, 42, 46, '#d9a62e', { edge: false, ao: false });
+      P.box(2.1, yB - 0.04, 2.9, yB + 0.04, 42, 46, '#d9a62e', { edge: false, ao: false });
+      P.box(2.4, yA, 2.6, yB, 44, 47, '#c99a26', { edge: false, ao: false });
+      P.box(2.42, 2.0, 2.58, 2.2, 38, 44, '#4a4f54', { edge: false, ao: false });
+      P.glowDot(2.5, 2.1, 46, 6, 'rgba(255,214,140,0.9)');
+    },
+  }),
   police: (rng) => ({
     fw: 2, fd: 2, H: 46, draw(P) {
       lot(P, 2, 2, ASPH);

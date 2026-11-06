@@ -1,7 +1,7 @@
 // DOM-based heads-up display and panels.
 import { icon } from './icons.js';
 import { BUILDINGS, MILESTONES, ZONE_NAMES, DENSITY_NAMES, ZONE_COST, DEPTS, MONTHS, DAYS_PER_MONTH,
-  ZONE_CAP, TIER_NAMES, ROAD_COST, PLINE_COST, TREE_COST } from '../data/defs.js';
+  ZONE_CAP, TIER_NAMES, ROAD_COST, PLINE_COST, TREE_COST, HIGHWAY_COST, RAIL_COST } from '../data/defs.js';
 import { OVERLAYS } from '../render/renderer.js';
 import { HW, HH } from '../render/art.js';
 import { describeBuilding } from '../world/sim.js';
@@ -28,17 +28,20 @@ export const LOGO = `<svg viewBox="0 0 40 40" width="40" height="40" aria-hidden
 const CATS = [
   { id: 'inspect', name: 'Look', icon: 'hand', tool: { kind: 'inspect' } },
   { id: 'bulldoze', name: 'Clear', icon: 'bulldoze', tool: { kind: 'bulldoze' } },
-  { id: 'road', name: 'Road', icon: 'road', tool: { kind: 'road' } },
+  { id: 'transport', name: 'Transport', icon: 'road', drawer: 'transport' },
   { id: 'zones', name: 'Zone', icon: 'zones', drawer: 'zones' },
   { id: 'utilities', name: 'Utility', icon: 'power', drawer: 'utilities' },
   { id: 'services', name: 'Civic', icon: 'safety', drawer: 'services' },
   { id: 'parks', name: 'Parks', icon: 'parks', drawer: 'parks' },
+  { id: 'terrain', name: 'Terrain', icon: 'mountain', drawer: 'terrain' },
   { sep: true },
   { id: 'data', name: 'Data', icon: 'layers', drawer: 'data' },
   { id: 'budget', name: 'Budget', icon: 'budget', panel: 'budget' },
   { id: 'city', name: 'City', icon: 'chart', panel: 'city' },
 ];
 const DRAWERS = {
+  transport: { title: 'Transport', items: ['road', 'highway', 'rail', 'busstop', 'busdepot', 'station', 'freight'] },
+  terrain: { title: 'Terrain', items: ['raise', 'lower', 'level'] },
   utilities: { title: 'Utilities', items: ['pline', 'wind', 'coal', 'solar', 'gas', 'nuclear', 'pump', 'wtower', 'treatment'] },
   services: { title: 'Civic services', items: ['police', 'fire', 'clinic', 'school', 'library', 'highschool', 'policehq', 'firehq', 'hospital', 'university'] },
   parks: { title: 'Parks & landmarks', items: ['trees', 'park', 'playground', 'plaza', 'pond', 'bigpark', 'sports', 'cityhall', 'museum', 'stadium', 'spire'] },
@@ -145,9 +148,9 @@ export class Hud {
   }
 
   syncTool(t) {
-    const map = { inspect: 'inspect', bulldoze: 'bulldoze', road: 'road', zone: 'zones', dezone: 'zones', pline: 'utilities', trees: 'parks' };
+    const map = { inspect: 'inspect', bulldoze: 'bulldoze', road: 'transport', rail: 'transport', terraform: 'terrain', zone: 'zones', dezone: 'zones', pline: 'utilities', trees: 'parks' };
     let id = map[t.kind];
-    if (t.kind === 'build') { const cat = BUILDINGS[t.key].cat; id = cat === 'power' || cat === 'water' ? 'utilities' : cat === 'parks' || cat === 'landmark' ? 'parks' : 'services'; }
+    if (t.kind === 'build') { const cat = BUILDINGS[t.key].cat; id = cat === 'transit' ? 'transport' : cat === 'power' || cat === 'water' ? 'utilities' : cat === 'parks' || cat === 'landmark' ? 'parks' : 'services'; }
     if (this.drawerId === 'data') id = 'data';
     this.setRailActive(id);
     document.querySelectorAll('#drawer .card').forEach((c) => c.classList.toggle('on', c.dataset.key === this.toolKey(t)));
@@ -157,6 +160,8 @@ export class Hud {
     if (t.kind === 'zone') return `z${t.zt}${t.zd}`;
     if (t.kind === 'build') return t.key;
     if (t.kind === 'overlay') return 'ov' + t.key;
+    if (t.kind === 'road') return t.type === 2 ? 'highway' : 'road';
+    if (t.kind === 'terraform') return t.op;
     return t.kind;
   }
 
@@ -206,7 +211,7 @@ export class Hud {
     d.classList.add('open');
     document.body.classList.add('drawer-open');
     $('#ticker').classList.add('drawer-open');
-    this.setRailActive(id === 'data' ? 'data' : { zones: 'zones', utilities: 'utilities', services: 'services', parks: 'parks' }[id]);
+    this.setRailActive(id);
     if (id === 'data') this.syncOverlay();
     else document.querySelectorAll('#drawer .card').forEach((c) => c.classList.toggle('on', c.dataset.key === this.toolKey(g.tool)));
   }
@@ -225,7 +230,16 @@ export class Hud {
   itemCard(key) {
     const g = this.g; const w = g.world;
     let name, cost, unlock = 0, extra = '';
-    if (key === 'pline') { name = 'Power line'; cost = `$${w.cost(PLINE_COST)}/tile`; }
+    const SIMPLE = {
+      pline: ['Power line', PLINE_COST, 'Drag to place'],
+      road: ['Road', ROAD_COST, 'Drag to draw. Power and water run along roads.'],
+      highway: ['Highway', HIGHWAY_COST, 'Fast four-lane road. Reach the map edge for regional traffic.'],
+      rail: ['Railway', RAIL_COST, 'Drag to lay track. Stations need a line to another station or the map edge.'],
+      raise: ['Raise land', null, 'Tap or drag to lift the ground one level'],
+      lower: ['Lower land', null, 'Tap or drag to dig down one level'],
+      level: ['Level land', null, 'Drag from a tile to flatten the area to its height'],
+    };
+    if (SIMPLE[key]) { name = SIMPLE[key][0]; cost = SIMPLE[key][1] != null ? `${money(w.cost(SIMPLE[key][1]))}/tile` : `${money(w.cost(20))}/step`; }
     else if (key === 'trees') { name = 'Plant trees'; cost = `$${w.cost(TREE_COST)}/tile`; }
     else {
       const d = BUILDINGS[key]; name = d.name; cost = money(w.cost(d.cost)); unlock = d.unlock;
@@ -241,8 +255,12 @@ export class Hud {
       sfx.tap();
       if (key === 'pline') g.setTool({ kind: 'pline' });
       else if (key === 'trees') g.setTool({ kind: 'trees' });
+      else if (key === 'road') g.setTool({ kind: 'road', type: 1 });
+      else if (key === 'highway') g.setTool({ kind: 'road', type: 2 });
+      else if (key === 'rail') g.setTool({ kind: 'rail' });
+      else if (key === 'raise' || key === 'lower' || key === 'level') g.setTool({ kind: 'terraform', op: key });
       else g.setTool({ kind: 'build', key });
-      const hint = $('#dhint'); if (hint) hint.textContent = key === 'pline' || key === 'trees' ? 'Drag to place' : BUILDINGS[key].desc;
+      const hint = $('#dhint'); if (hint) hint.textContent = SIMPLE[key] ? SIMPLE[key][2] : key === 'trees' ? 'Drag to place' : BUILDINGS[key].desc;
     };
     return c;
   }
@@ -252,6 +270,10 @@ export class Hud {
     let s;
     if (key === 'pline') s = bank.pole(10);
     else if (key === 'trees') s = bank.tree(3, 2);
+    else if (key === 'road') s = bank.road(10, false);
+    else if (key === 'highway') s = bank.highway(10, 10, false);
+    else if (key === 'rail') s = bank.rail(10, 0);
+    else if (key === 'raise' || key === 'lower' || key === 'level') { this.paintTerrainThumb(cv, key); return; }
     else s = bank.service(key, 0);
     const pad = 10;
     // crop to the content bounds (footprint + height), not the shadow padding
@@ -261,6 +283,26 @@ export class Hud {
     const dx = (cv.width - cw * sc) / 2, dy = (cv.height - ch * sc) / 2 + 2;
     x.clearRect(0, 0, cv.width, cv.height);
     x.drawImage(s.img, (s.ax - s.fd * HW - 2) * 2, (s.ay - s.H - 2) * 2, cw * 2, ch * 2, dx, dy, cw * sc, ch * sc);
+  }
+
+  paintTerrainThumb(cv, op) {
+    const x = cv.getContext('2d'); const W = cv.width, H = cv.height;
+    x.clearRect(0, 0, W, H);
+    const cx = W / 2, cy = H / 2 + 34, tw = 40, th = 20;
+    const hgt = op === 'raise' ? [0, 1, 2, 1, 0] : op === 'lower' ? [2, 1, 0, 1, 2] : [1, 1, 1, 1, 1];
+    for (let k = 0; k < 5; k++) {
+      const h = hgt[k] * 14; const px = cx + (k - 2) * tw * 0.5, py = cy;
+      x.fillStyle = '#8a6a48'; x.fillRect(px - tw / 2, py - th / 2 - h, tw / 2, h + 8);
+      x.fillStyle = '#6e543a'; x.fillRect(px, py - th / 2 - h, tw / 2, h + 8);
+      x.fillStyle = ['#7f9f52', '#8aab5c', '#97b765', '#8aab5c', '#7f9f52'][k];
+      x.beginPath(); x.moveTo(px, py - th - h); x.lineTo(px + tw / 2, py - th / 2 - h); x.lineTo(px, py - h); x.lineTo(px - tw / 2, py - th / 2 - h); x.closePath(); x.fill();
+    }
+    x.strokeStyle = '#1c1f22'; x.lineWidth = 4; x.lineCap = 'round'; x.lineJoin = 'round';
+    x.beginPath();
+    if (op === 'raise') { x.moveTo(cx, 58); x.lineTo(cx, 22); x.moveTo(cx - 10, 32); x.lineTo(cx, 22); x.lineTo(cx + 10, 32); }
+    else if (op === 'lower') { x.moveTo(cx, 22); x.lineTo(cx, 58); x.moveTo(cx - 10, 48); x.lineTo(cx, 58); x.lineTo(cx + 10, 48); }
+    else { x.moveTo(cx - 40, 34); x.lineTo(cx + 40, 34); x.moveTo(cx - 40, 26); x.lineTo(cx - 40, 42); x.moveTo(cx + 40, 26); x.lineTo(cx + 40, 42); }
+    x.stroke();
   }
 
   closeDrawer() {
@@ -482,6 +524,9 @@ export class Hud {
         <div><div class="cap">Education</div><div class="v">${pct(s.edu)}</div></div>
         <div><div class="cap">Crime</div><div class="v">${lvl(s.crimeAvg)}</div></div>
         <div><div class="cap">Pollution</div><div class="v">${lvl(s.pollAvg)}</div></div>
+        <div><div class="cap">Transit riders</div><div class="v">${fmt(s.riders || 0)}</div></div>
+        <div><div class="cap">Traffic</div><div class="v">${lvl(s.trafficAvg)}</div></div>
+        <div><div class="cap">Region link</div><div class="v" style="font-size:16px">${[s.hwyOut && 'Highway', s.railPax && 'Rail', s.railFreight && 'Freight'].filter(Boolean).join(' · ') || (s.outside ? 'Road' : 'None')}</div></div>
       </div>
       <div class="grid2" style="margin-top:20px"><div><div class="cap" style="margin-bottom:8px">Population</div><canvas class="chart" id="chPop" width="640" height="300"></canvas></div>
       <div><div class="cap" style="margin-bottom:8px">Treasury</div><canvas class="chart" id="chFunds" width="640" height="300"></canvas></div></div>`;

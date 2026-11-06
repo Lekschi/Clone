@@ -6,8 +6,13 @@ import { makeCanvas } from './render/art.js';
 
 export function buildDemoCity(seed = 7) {
   const w = new World(56, 56);
-  w.generate({ seed, mapType: 'coast', difficulty: 'easy', name: 'Demo' });
+  w.generate({ seed, mapType: 'coast', difficulty: 'easy', name: 'Demo', hills: 'mountains' });
   w.funds = 1e9;
+  // carve a flat valley for the city; the relax pass turns the edge into gentle slopes
+  for (let y = 0; y <= w.h; y++) for (let x = 0; x <= w.w; x++) {
+    if (Math.abs(x - 30) <= 21 && Math.abs(y - 28) <= 21) w.height[w.hIdx(x, y)] = 0;
+  }
+  w.relaxHeights();
   const rng = mulberry32(seed + 1);
   const cx = 30, cy = 28;
   const land = (x, y) => w.inb(x, y) && w.terrain[w.idx(x, y)] !== T_WATER;
@@ -62,6 +67,7 @@ export function drawMapPreview(w, canvas) {
     else if (w.terrain[i] === T_SAND) c = [222, 208, 164];
     else if (w.tree[i]) c = w.tree[i] > 2 ? [70, 108, 58] : [92, 128, 70];
     else c = [140, 170, 98];
+    if (w.maxH) { const x = i % w.w, y = (i / w.w) | 0; const f = 0.82 + w.tileAvgH(x, y) * 0.04; c = c.map((v) => Math.min(255, v * f)); }
     d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255;
   }
   const tmp = makeCanvas(w.w, w.h); tmp.getContext('2d').putImageData(img, 0, 0);

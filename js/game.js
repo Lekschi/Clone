@@ -186,7 +186,8 @@ class Game {
   costFn(t) {
     const w = this.world;
     switch (t.kind) {
-      case 'road': return (x, y) => w.roadCost(x, y);
+      case 'road': return (x, y) => w.roadCost(x, y, t.type || 1);
+      case 'rail': return (x, y) => w.railCost(x, y);
       case 'pline': return (x, y) => w.plineCost(x, y);
       case 'zone': return (x, y) => w.zoneCost(x, y, t.zt, t.zd);
       case 'dezone': return (x, y) => { if (!w.inb(x, y)) return -1; const i = w.idx(x, y); if (!w.zoneT[i]) return -1; const b = w.buildingAt(x, y); return b && b.kind === 'zone' ? 5 : 0.0001; };
@@ -198,7 +199,8 @@ class Game {
   applyFn(t) {
     const w = this.world;
     switch (t.kind) {
-      case 'road': return (x, y) => w.buildRoad(x, y);
+      case 'road': return (x, y) => w.buildRoad(x, y, t.type || 1);
+      case 'rail': return (x, y) => w.buildRail(x, y);
       case 'pline': return (x, y) => w.buildPline(x, y);
       case 'zone': return (x, y) => w.setZone(x, y, t.zt, t.zd);
       case 'dezone': return (x, y) => {
@@ -213,9 +215,27 @@ class Game {
     }
   }
 
+  isLine(t) { return t.kind === 'road' || t.kind === 'pline' || t.kind === 'rail'; }
+
+  terraPlan(a, b) {
+    const w = this.world; const t = this.tool;
+    let level = 0;
+    if (w.inb(a[0], a[1])) level = Math.round(w.tileAvgH(a[0], a[1]));
+    const targets = w.terraformTargets(t.op, a[0], a[1], b[0], b[1], level);
+    return w.planTerraform(targets);
+  }
+
   dragPreview(a, b, sx, sy) {
     const t = this.tool;
-    const tiles = (t.kind === 'road' || t.kind === 'pline') ? this.lineTiles(a, b) : this.rectTiles(a, b);
+    if (t.kind === 'terraform') {
+      const plan = this.terraPlan(a, b);
+      const list = this.rectTiles(a, b).filter(([x, y]) => this.world.inb(x, y)).map(([x, y]) => ({ x, y, ok: plan.ok }));
+      this.renderer.preview = { tiles: list, color: 'rgba(196,160,96,0.45)' };
+      const name = { raise: 'Raise land', lower: 'Lower land', level: 'Level land' }[t.op];
+      this.hud.tip(sx, sy, plan.ok ? `${name} · ${money(plan.cost)}` : plan.reason, !plan.ok);
+      return;
+    }
+    const tiles = this.isLine(t) ? this.lineTiles(a, b) : this.rectTiles(a, b);
     const fn = this.costFn(t);
     let total = 0, count = 0;
     const seen = new Set();
@@ -232,14 +252,21 @@ class Game {
     }
     const col = t.kind === 'zone' ? rgba(ZONE_COLORS[t.zt], 0.55) : t.kind === 'bulldoze' || t.kind === 'dezone' ? 'rgba(214,64,52,0.35)' : t.kind === 'trees' ? 'rgba(80,150,60,0.45)' : 'rgba(255,255,255,0.4)';
     this.renderer.preview = { tiles: list, color: col };
-    const label = { road: 'Road', pline: 'Power line', zone: t.zt ? ZONE_NAMES[t.zt] : '', dezone: 'Dezone', bulldoze: 'Demolish', trees: 'Trees' }[t.kind];
+    const label = { road: t.type === 2 ? 'Highway' : 'Road', rail: 'Railway', pline: 'Power line', zone: t.zt ? ZONE_NAMES[t.zt] : '', dezone: 'Dezone', bulldoze: 'Demolish', trees: 'Trees' }[t.kind];
     const bad = total > this.world.funds;
     this.hud.tip(sx, sy, `${label} · ${money(Math.ceil(total))}<small>${count} tile${count === 1 ? '' : 's'}</small>`, bad);
   }
 
   commitDrag(a, b) {
     const t = this.tool;
-    const tiles = (t.kind === 'road' || t.kind === 'pline') ? this.lineTiles(a, b) : this.rectTiles(a, b);
+    if (t.kind === 'terraform') {
+      const plan = this.terraPlan(a, b);
+      this.renderer.preview = null; this.hud.tip(0, 0, null);
+      if (!plan.ok) { this.hud.toast(plan.reason, true); sfx.error(); return; }
+      this.world.applyTerraform(plan); sfx.bulldoze();
+      return;
+    }
+    const tiles = this.isLine(t) ? this.lineTiles(a, b) : this.rectTiles(a, b);
     const fn = this.applyFn(t);
     let spent = 0, broke = false;
     for (const [x, y] of tiles) {
@@ -249,7 +276,7 @@ class Game {
     }
     this.renderer.preview = null; this.hud.tip(0, 0, null);
     if (broke) { this.hud.toast('Not enough funds', true); sfx.error(); }
-    if (spent > 0) ({ road: sfx.road, pline: sfx.road, zone: sfx.zone, bulldoze: sfx.bulldoze, dezone: sfx.bulldoze, trees: sfx.zone }[t.kind] || sfx.tap)();
+    if (spent > 0) ({ road: sfx.road, rail: sfx.road, pline: sfx.road, zone: sfx.zone, bulldoze: sfx.bulldoze, dezone: sfx.bulldoze, trees: sfx.zone }[t.kind] || sfx.tap)();
   }
 
   buildPreview(tx, ty, sx, sy) {
