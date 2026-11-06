@@ -16,7 +16,7 @@ export const OVERLAYS = {
   landValue: { name: 'Land value', legend: ['Low', 'High'], ramp: ['#7a4b3a', '#e8c35a', '#3fa35a'] },
   pollution: { name: 'Pollution', legend: ['Clean', 'Polluted'], ramp: ['#3fa35a', '#d9b443', '#8a3a2e'] },
   crime:     { name: 'Crime', legend: ['Safe', 'Dangerous'], ramp: ['#3f7fc0', '#d9b443', '#b8312f'] },
-  traffic:   { name: 'Traffic', legend: ['Free', 'Jammed'], ramp: ['#3fa35a', '#e0a526', '#b8312f'] },
+  traffic:   { name: 'Traffic', legend: ['Free-flowing', 'Jammed'], ramp: ['#3fa35a', '#e0a526', '#b8312f'] },
   covPolice: { name: 'Police', legend: ['None', 'Full'], ramp: ['#40464d', '#2f6fb8', '#7fc3ff'] },
   covFire:   { name: 'Fire', legend: ['None', 'Full'], ramp: ['#40464d', '#c25b2b', '#ffb36b'] },
   covHealth: { name: 'Health', legend: ['None', 'Full'], ramp: ['#40464d', '#2f9e6b', '#9fe3bf'] },

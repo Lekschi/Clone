@@ -4,10 +4,11 @@ import { Sim } from './world/sim.js';
 import { SpriteBank } from './render/sprites.js';
 import { Renderer } from './render/renderer.js';
 import { Hud, money } from './ui/hud.js';
-import { BUILDINGS, ZONE_NAMES } from './data/defs.js';
+import { BUILDINGS } from './data/defs.js';
 import { ZONE_COLORS } from './render/ground.js';
 import { rgba } from './render/art.js';
 import * as store from './storage.js';
+import { t, t as T, initLang } from './i18n.js';
 import { sfx, setSound, unlock, startAmbient, setAmbientLevel } from './audio.js';
 
 const SPEED_MS = [Infinity, 420, 150, 45];
@@ -15,6 +16,7 @@ const SPEED_MS = [Infinity, 420, 150, 45];
 class Game {
   async init() {
     this.settings = store.getSettings();
+    initLang(this.settings.lang);
     const params = new URLSearchParams(location.search);
     this.id = params.get('id') || store.lastCityId();
     let world = null;
@@ -48,7 +50,7 @@ class Game {
     window.addEventListener('pagehide', () => this.save());
     requestAnimationFrame((t) => this.frame(t));
     setTimeout(() => document.getElementById('loading').classList.add('hide'), 150);
-    if (!world.buildings.size && !world.day) setTimeout(() => this.hud.toast('Start with a road from the edge of the map, then zone along it.'), 900);
+    if (!world.buildings.size && !world.day) setTimeout(() => this.hud.toast(t('Start with a road from the edge of the map, then zone along it.')), 900);
   }
 
   frameCam() {
@@ -124,7 +126,7 @@ class Game {
   async save() {
     if (this.saving) return; this.saving = true;
     try { await store.saveCity(this.id, this.world, this.thumb()); this.lastSaved = Date.now(); }
-    catch (e) { console.error('save failed', e); this.hud.toast('Could not save — storage unavailable', true); }
+    catch (e) { console.error('save failed', e); this.hud.toast(t('Could not save — storage unavailable'), true); }
     this.saving = false;
   }
   async exit() { await this.save(); location.href = 'index.html'; }
@@ -231,8 +233,8 @@ class Game {
       const plan = this.terraPlan(a, b);
       const list = this.rectTiles(a, b).filter(([x, y]) => this.world.inb(x, y)).map(([x, y]) => ({ x, y, ok: plan.ok }));
       this.renderer.preview = { tiles: list, color: 'rgba(196,160,96,0.45)' };
-      const name = { raise: 'Raise land', lower: 'Lower land', level: 'Level land' }[t.op];
-      this.hud.tip(sx, sy, plan.ok ? `${name} · ${money(plan.cost)}` : plan.reason, !plan.ok);
+      const name = T({ raise: 'Raise land', lower: 'Lower land', level: 'Level land' }[t.op]);
+      this.hud.tip(sx, sy, plan.ok ? `${name} · ${money(plan.cost)}` : T(plan.reason), !plan.ok);
       return;
     }
     const tiles = this.isLine(t) ? this.lineTiles(a, b) : this.rectTiles(a, b);
@@ -252,9 +254,9 @@ class Game {
     }
     const col = t.kind === 'zone' ? rgba(ZONE_COLORS[t.zt], 0.55) : t.kind === 'bulldoze' || t.kind === 'dezone' ? 'rgba(214,64,52,0.35)' : t.kind === 'trees' ? 'rgba(80,150,60,0.45)' : 'rgba(255,255,255,0.4)';
     this.renderer.preview = { tiles: list, color: col };
-    const label = { road: t.type === 2 ? 'Highway' : 'Road', rail: 'Railway', pline: 'Power line', zone: t.zt ? ZONE_NAMES[t.zt] : '', dezone: 'Dezone', bulldoze: 'Demolish', trees: 'Trees' }[t.kind];
+    const label = T({ road: t.type === 2 ? 'Highway' : 'Road', rail: 'Railway', pline: 'Power line', zone: t.zt ? ['', 'Residential', 'Commercial', 'Industrial'][t.zt] : '', dezone: 'Dezone', bulldoze: 'Demolish', trees: 'Trees' }[t.kind]);
     const bad = total > this.world.funds;
-    this.hud.tip(sx, sy, `${label} · ${money(Math.ceil(total))}<small>${count} tile${count === 1 ? '' : 's'}</small>`, bad);
+    this.hud.tip(sx, sy, `${label} · ${money(Math.ceil(total))}<small>${T(count === 1 ? '{n} tile' : '{n} tiles', { n: count })}</small>`, bad);
   }
 
   commitDrag(a, b) {
@@ -262,7 +264,7 @@ class Game {
     if (t.kind === 'terraform') {
       const plan = this.terraPlan(a, b);
       this.renderer.preview = null; this.hud.tip(0, 0, null);
-      if (!plan.ok) { this.hud.toast(plan.reason, true); sfx.error(); return; }
+      if (!plan.ok) { this.hud.toast(T(plan.reason), true); sfx.error(); return; }
       this.world.applyTerraform(plan); sfx.bulldoze();
       return;
     }
@@ -275,7 +277,7 @@ class Game {
       spent += c;
     }
     this.renderer.preview = null; this.hud.tip(0, 0, null);
-    if (broke) { this.hud.toast('Not enough funds', true); sfx.error(); }
+    if (broke) { this.hud.toast(T('Not enough funds'), true); sfx.error(); }
     if (spent > 0) ({ road: sfx.road, rail: sfx.road, pline: sfx.road, zone: sfx.zone, bulldoze: sfx.bulldoze, dezone: sfx.bulldoze, trees: sfx.zone }[t.kind] || sfx.tap)();
   }
 
@@ -285,7 +287,7 @@ class Game {
     const x = tx - off, y = ty - off;
     const chk = this.world.placeCheck(key, x, y);
     this.renderer.preview = { building: { key, x, y, size: d.size, ok: chk.ok }, radius: d.r ? { cx: x + d.size / 2, cy: y + d.size / 2, r: d.r } : null };
-    this.hud.tip(sx, sy - 40 * this.renderer.cam.zoom, chk.ok ? `${d.name} · ${money(chk.cost)}` : chk.reason, !chk.ok);
+    this.hud.tip(sx, sy - 40 * this.renderer.cam.zoom, chk.ok ? `${T(d.name)} · ${money(chk.cost)}` : T(chk.reason), !chk.ok);
     return { x, y, ok: chk.ok };
   }
 
@@ -293,7 +295,7 @@ class Game {
     const key = this.tool.key;
     const r = this.world.place(key, x, y);
     this.renderer.preview = null; this.hud.tip(0, 0, null);
-    if (!r.ok) { this.hud.toast(r.reason, true); sfx.error(); return; }
+    if (!r.ok) { this.hud.toast(T(r.reason), true); sfx.error(); return; }
     sfx.build();
   }
 
@@ -446,5 +448,5 @@ window.__game = game;
 game.init().catch((e) => {
   console.error(e);
   const l = document.getElementById('loading');
-  if (l) l.querySelector('.lw').insertAdjacentHTML('beforeend', `<p style="margin-top:20px;opacity:.8">Something went wrong: ${e.message}</p><p><a href="index.html" style="color:#f07a4f">Back to launcher</a></p>`);
+  if (l) l.querySelector('.lw').insertAdjacentHTML('beforeend', `<p style="margin-top:20px;opacity:.8">${t('Something went wrong:')} ${e.message}</p><p><a href="index.html" style="color:#f07a4f">${t('Back to menu')}</a></p>`);
 });

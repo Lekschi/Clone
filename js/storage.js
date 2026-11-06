@@ -75,7 +75,7 @@ export async function importCity(text) {
 
 export function lastCityId() { try { return localStorage.getItem('meridian.last'); } catch (e) { return null; } }
 
-const DEFAULT_SETTINGS = { sound: true, music: false, dayNight: true, autosave: 60, confirmBuild: true, edgeScroll: false, quality: 'high', disasters: true };
+const DEFAULT_SETTINGS = { lang: 'auto', sound: true, music: false, dayNight: true, autosave: 60, confirmBuild: true, edgeScroll: false, quality: 'high', disasters: true };
 export function getSettings() {
   try { return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem('meridian.settings') || '{}') }; }
   catch (e) { return { ...DEFAULT_SETTINGS }; }

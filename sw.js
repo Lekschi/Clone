@@ -1,11 +1,11 @@
 // Offline support: network-first (so updates arrive immediately), falling back to cache.
-const CACHE = 'meridian-v1';
+const CACHE = 'meridian-v2';
 const ASSETS = [
   './', 'index.html', 'game.html', 'manifest.webmanifest', 'css/app.css', 'css/launcher.css',
   'js/launcher.js', 'js/game.js', 'js/demo.js', 'js/storage.js', 'js/audio.js',
   'js/util/rng.js', 'js/data/defs.js', 'js/world/world.js', 'js/world/sim.js',
   'js/render/art.js', 'js/render/ground.js', 'js/render/buildings.js', 'js/render/sprites.js', 'js/render/renderer.js',
-  'js/ui/icons.js', 'js/ui/hud.js',
+  'js/ui/icons.js', 'js/ui/hud.js', 'js/i18n.js', 'js/lang/de.js',
   'assets/icons/icon.svg', 'assets/icons/icon-180.png', 'assets/icons/icon-192.png', 'assets/icons/icon-512.png',
 ];
 

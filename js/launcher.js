@@ -9,10 +9,15 @@ import { MAP_TYPES, MAP_SIZES, DIFFICULTY, MILESTONES, HILLS } from './data/defs
 import { cityName } from './util/rng.js';
 import * as store from './storage.js';
 import { sfx, setSound, unlock } from './audio.js';
+import { t, initLang, getLang } from './i18n.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const VERSION = '1.0';
+const VERSION = '1.1';
+
+const settings = store.getSettings();
+initLang(settings.lang);
+setSound(settings.sound);
 
 // ---------- backdrop ----------
 const bank = new SpriteBank();
@@ -21,19 +26,17 @@ const cv = $('#bg');
 const R = new Renderer(cv, demo, bank);
 R.cam.zoom = window.innerWidth < 800 ? 0.62 : 0.9;
 R.timeOfDay = 0.36;
-let t0 = performance.now();
-const settings = store.getSettings();
-setSound(settings.sound);
 R.dayNight = true;
-function loop(t) {
-  const k = (t - t0) / 1000;
+const t0 = performance.now();
+function loop(now) {
+  const k = (now - t0) / 1000;
   const cx = 30 + Math.cos(k * 0.035) * 7, cy = 28 + Math.sin(k * 0.035) * 6;
   R.centerOn(cx, cy);
   // keep the city off to the right of the menu panel on landscape screens
   if (window.innerWidth > 820) R.cam.x -= 200 / R.cam.zoom;
   else R.cam.y += 140 / R.cam.zoom;
   R.timeOfDay = (0.36 + k / 140) % 1;
-  R.draw(t);
+  R.draw(now);
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
@@ -41,15 +44,18 @@ window.addEventListener('resize', () => { R.resize(); R.cam.zoom = window.innerW
 
 // ---------- screens ----------
 const lp = $('#lp');
-lp.innerHTML = `
-  <header><div class="wm">${LOGO}<h1>Meridian</h1></div>
-  <p class="tag">Lay the streets, zone the blocks, keep the lights on — and watch a town become a skyline.</p></header>
-  <div class="screens" id="screens"></div>
-  <footer><span>Version ${VERSION}</span><span id="storeNote">Progress saves on this device</span></footer>`;
-const screens = $('#screens');
+function frame() {
+  lp.innerHTML = `
+    <header><div class="wm">${LOGO}<h1>Meridian</h1></div>
+    <p class="tag">${t('Lay the streets, zone the blocks, keep the lights on — and watch a town become a skyline.')}</p></header>
+    <div class="screens" id="screens"></div>
+    <footer><span>${t('Version {v}', { v: VERSION })}</span><span id="storeNote">${t('Progress saves on this device')}</span></footer>`;
+}
+frame();
 let current = null;
 
 function show(name, back) {
+  const screens = $('#screens');
   const el = document.createElement('section');
   el.className = 'screen ' + (back ? 'off-l' : 'off-r');
   const html = SCREENS[name]();
@@ -65,6 +71,8 @@ function show(name, back) {
   html.bind && html.bind(el);
 }
 
+const back = (title) => `<div class="sh"><button data-back aria-label="${t('Back')}">${icon('back')}</button><h2>${title}</h2></div>`;
+
 const SCREENS = {
   home() {
     return {
@@ -73,11 +81,11 @@ const SCREENS = {
         const list = await store.listCities().catch(() => []);
         const last = list[0];
         const items = [];
-        if (last) items.push({ id: 'continue', t: 'Continue', s: `${esc(last.name)} · ${fmt(last.pop)} residents · ${dateStr(last.day)}`, primary: true });
-        items.push({ id: 'new', t: 'New city', s: 'Choose terrain, size and starting budget', primary: !last });
-        items.push({ id: 'cities', t: 'Your cities', s: list.length ? `${list.length} saved` : 'Import a city file', dis: false });
-        items.push({ id: 'settings', t: 'Settings', s: 'Sound, lighting, autosave, install' });
-        items.push({ id: 'guide', t: 'Field guide', s: 'How cities grow, and the touch controls' });
+        if (last) items.push({ id: 'continue', t: t('Continue'), s: `${esc(last.name)} · ${t('{p} residents', { p: fmt(last.pop) })} · ${dateStr(last.day)}`, primary: true });
+        items.push({ id: 'new', t: t('New city'), s: t('Choose terrain, landscape, size and starting budget'), primary: !last });
+        items.push({ id: 'cities', t: t('Your cities'), s: list.length ? t('{n} saved', { n: list.length }) : t('Import a city file') });
+        items.push({ id: 'settings', t: t('Settings'), s: t('Language, sound, lighting, autosave, install') });
+        items.push({ id: 'guide', t: t('Field guide'), s: t('How cities grow, and the touch controls') });
         $('#homeList', el).innerHTML = items.map((it, k) => `<button class="mi ${it.primary ? 'primary' : ''}" data-go="${it.id}"><span class="n">${String(k + 1).padStart(2, '0')}</span><span><div class="t">${it.t}</div><div class="s">${it.s}</div></span>${icon('arrow')}</button>`).join('');
         el.querySelectorAll('[data-go]').forEach((b) => b.onclick = () => {
           unlock(); sfx.open();
@@ -91,26 +99,27 @@ const SCREENS = {
 
   new() {
     const st = { name: cityName(), type: 'river', size: 'medium', diff: 'normal', hills: 'rolling', seed: (Math.random() * 1e9) | 0 };
+    const sizeName = { small: t('Small'), medium: t('Medium'), large: t('Large') };
     return {
-      html: `<div class="sh"><button data-back aria-label="Back">${icon('back')}</button><h2>Found a new city</h2></div>
-        <div class="field"><span class="cap">City name</span><div class="namebox"><input id="nm" maxlength="28" value="${esc(st.name)}" autocomplete="off" spellcheck="false"><button id="nmDice" aria-label="Random name">${icon('dice')}</button></div></div>
-        <div class="field"><span class="cap">Terrain</span><div class="types" id="types">${Object.entries(MAP_TYPES).map(([k, v]) => `<button data-t="${k}" class="${k === st.type ? 'on' : ''}">${v.name}</button>`).join('')}</div></div>
-        <div class="preview"><canvas id="pv" width="760" height="380"></canvas><div class="pd" id="pd"></div><button class="reroll" id="reroll">${icon('dice')}New land</button></div>
-        <div class="field"><span class="cap">Landscape</span><div class="seg full" id="hl">${Object.entries(HILLS).map(([k, v]) => `<button data-v="${k}" class="${k === st.hills ? 'on' : ''}">${v}</button>`).join('')}</div></div>
-        <div class="field"><span class="cap">Map size</span><div class="seg full" id="sz">${Object.entries(MAP_SIZES).map(([k, v]) => `<button data-v="${k}" class="${k === st.size ? 'on' : ''}">${k[0].toUpperCase() + k.slice(1)} · ${v}²</button>`).join('')}</div></div>
-        <div class="field"><span class="cap">Starting budget</span><div class="seg full" id="df">${Object.entries(DIFFICULTY).map(([k, v]) => `<button data-v="${k}" class="${k === st.diff ? 'on' : ''}">${v.name}<br><small style="font-weight:500;opacity:.75">${money(v.funds)}</small></button>`).join('')}</div></div>
-        <button class="found" id="found">${icon('landmark')}Found ${esc(st.name)}</button>`,
+      html: `${back(t('Found a new city'))}
+        <div class="field"><span class="cap">${t('City name')}</span><div class="namebox"><input id="nm" maxlength="28" value="${esc(st.name)}" autocomplete="off" spellcheck="false"><button id="nmDice" aria-label="${t('Random name')}">${icon('dice')}</button></div></div>
+        <div class="field"><span class="cap">${t('Terrain')}</span><div class="types" id="types">${Object.entries(MAP_TYPES).map(([k, v]) => `<button data-t="${k}" class="${k === st.type ? 'on' : ''}">${t(v.name)}</button>`).join('')}</div></div>
+        <div class="preview"><canvas id="pv" width="760" height="380"></canvas><div class="pd" id="pd"></div><button class="reroll" id="reroll">${icon('dice')}${t('New land')}</button></div>
+        <div class="field"><span class="cap">${t('Landscape')}</span><div class="seg full" id="hl">${Object.entries(HILLS).map(([k, v]) => `<button data-v="${k}" class="${k === st.hills ? 'on' : ''}">${t(v)}</button>`).join('')}</div></div>
+        <div class="field"><span class="cap">${t('Map size')}</span><div class="seg full" id="sz">${Object.entries(MAP_SIZES).map(([k, v]) => `<button data-v="${k}" class="${k === st.size ? 'on' : ''}">${sizeName[k]} · ${v}²</button>`).join('')}</div></div>
+        <div class="field"><span class="cap">${t('Starting budget')}</span><div class="seg full" id="df">${Object.entries(DIFFICULTY).map(([k, v]) => `<button data-v="${k}" class="${k === st.diff ? 'on' : ''}">${t(v.name)}<br><small style="font-weight:500;opacity:.75">${money(v.funds)}</small></button>`).join('')}</div></div>
+        <button class="found" id="found"></button>`,
       bind(el) {
         let world = null;
         const regen = () => {
           world = new World(MAP_SIZES[st.size], MAP_SIZES[st.size]);
           world.generate({ seed: st.seed, mapType: st.type, difficulty: st.diff, name: st.name, hills: st.hills });
           drawMapPreview(world, $('#pv', el));
-          $('#pd', el).textContent = MAP_TYPES[st.type].desc;
+          $('#pd', el).textContent = t(MAP_TYPES[st.type].desc);
         };
-        const label = () => { $('#found', el).innerHTML = `${icon('landmark')}Found ${esc(st.name || 'city')}`; };
-        regen();
-        $('#nm', el).oninput = (e) => { st.name = e.target.value.trim() || 'Unnamed'; label(); };
+        const label = () => { $('#found', el).innerHTML = `${icon('landmark')}${t('Found {n}', { n: esc(st.name || t('city')) })}`; };
+        regen(); label();
+        $('#nm', el).oninput = (e) => { st.name = e.target.value.trim() || t('Unnamed'); label(); };
         $('#nmDice', el).onclick = () => { st.name = cityName(); $('#nm', el).value = st.name; label(); sfx.tap(); };
         $('#reroll', el).onclick = () => { st.seed = (Math.random() * 1e9) | 0; regen(); sfx.tap(); };
         el.querySelectorAll('#types button').forEach((b) => b.onclick = () => { st.type = b.dataset.t; el.querySelectorAll('#types button').forEach((x) => x.classList.toggle('on', x === b)); regen(); sfx.tap(); });
@@ -118,12 +127,12 @@ const SCREENS = {
         seg('sz', 'size', true); seg('df', 'diff', false); seg('hl', 'hills', true);
         $('#found', el).onclick = async () => {
           unlock(); sfx.build();
-          world.name = st.name || 'Unnamed';
+          world.name = st.name || t('Unnamed');
           const D = DIFFICULTY[st.diff]; world.difficulty = st.diff; world.funds = D.funds; world.costMul = D.costMul;
           world.settings.disasters = settings.disasters;
           const id = store.newId();
           try { await store.saveCity(id, world, null); }
-          catch (e) { alert('Storage is not available in this browser mode. Progress cannot be saved.'); }
+          catch (e) { alert(t('Storage is not available in this browser mode. Progress cannot be saved.')); }
           location.href = `game.html?id=${encodeURIComponent(id)}`;
         };
       },
@@ -132,22 +141,22 @@ const SCREENS = {
 
   cities() {
     return {
-      html: `<div class="sh"><button data-back aria-label="Back">${icon('back')}</button><h2>Your cities</h2></div>
+      html: `${back(t('Your cities'))}
         <div class="citylist" id="cl"></div>
-        <div class="btnrow" style="margin-top:16px"><label class="btn ghost" style="cursor:pointer">${icon('import')}Import city file<input type="file" id="imp" accept=".json,application/json" hidden></label></div>
-        <div class="note">Cities are stored in this browser on this device. Use <b>Export</b> to keep a backup file in the Files app.</div>`,
+        <div class="btnrow" style="margin-top:16px"><label class="btn ghost" style="cursor:pointer">${icon('import')}${t('Import city file')}<input type="file" id="imp" accept=".json,application/json" hidden></label></div>
+        <div class="note">${t('Cities are stored in this browser on this device. Use <b>Export</b> to keep a backup file in the Files app.')}</div>`,
       async bind(el) {
         const render = async () => {
           const list = await store.listCities().catch(() => []);
           $('#cl', el).innerHTML = list.length ? list.map((c) => `<div class="city">
               ${c.thumb ? `<img src="${c.thumb}" alt="">` : '<div class="noimg"></div>'}
-              <div><div class="cn">${esc(c.name)}</div><div class="cs">${MILESTONES[c.milestone || 0].name} · ${fmt(c.pop)} residents<br>${dateStr(c.day)} · ${money(c.funds)} · saved ${new Date(c.updated).toLocaleDateString()}</div></div>
-              <div class="ca"><button class="play" data-play="${c.id}">${icon('play')}Play</button><button data-exp="${c.id}">${icon('export')}Export</button><button data-del="${c.id}" aria-label="Delete">${icon('trash')}</button></div>
-            </div>`).join('') : `<div class="empty">No cities yet. Found your first one from the main menu.</div>`;
+              <div><div class="cn">${esc(c.name)}</div><div class="cs">${t(MILESTONES[c.milestone || 0].name)} · ${t('{p} residents', { p: fmt(c.pop) })}<br>${dateStr(c.day)} · ${money(c.funds)} · ${t('saved {d}', { d: new Date(c.updated).toLocaleDateString(getLang()) })}</div></div>
+              <div class="ca"><button class="play" data-play="${c.id}">${icon('play')}${t('Play')}</button><button data-exp="${c.id}">${icon('export')}${t('Export')}</button><button data-del="${c.id}" aria-label="${t('Delete')}">${icon('trash')}</button></div>
+            </div>`).join('') : `<div class="empty">${t('No cities yet. Found your first one from the main menu.')}</div>`;
           el.querySelectorAll('[data-play]').forEach((b) => b.onclick = () => { location.href = `game.html?id=${encodeURIComponent(b.dataset.play)}`; });
           el.querySelectorAll('[data-del]').forEach((b) => b.onclick = async () => {
             const c = list.find((x) => x.id === b.dataset.del);
-            if (!confirm(`Delete “${c.name}” permanently?`)) return;
+            if (!confirm(t('Delete “{n}” permanently?', { n: c.name }))) return;
             await store.deleteCity(c.id); sfx.bulldoze(); render();
           });
           el.querySelectorAll('[data-exp]').forEach((b) => b.onclick = async () => {
@@ -163,7 +172,7 @@ const SCREENS = {
         $('#imp', el).onchange = async (e) => {
           const f = e.target.files[0]; if (!f) return;
           try { await store.importCity(await f.text()); sfx.cash(); render(); }
-          catch (err) { alert('Could not import: ' + err.message); }
+          catch (err) { alert(t('Could not import: {e}', { e: err.message })); }
         };
       },
     };
@@ -171,55 +180,72 @@ const SCREENS = {
 
   settings() {
     const st = store.getSettings();
-    const tg = (k, label, sub) => `<label class="toggle"><span>${label}${sub ? `<small>${sub}</small>` : ''}</span><span class="sw"><input type="checkbox" data-set="${k}" ${st[k] ? 'checked' : ''}><i></i></span></label>`;
+    const tg = (k, label, sub) => `<label class="toggle"><span>${t(label)}${sub ? `<small>${t(sub)}</small>` : ''}</span><span class="sw"><input type="checkbox" data-set="${k}" ${st[k] ? 'checked' : ''}><i></i></span></label>`;
     const standalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+    const langNow = st.lang || 'auto';
     return {
-      html: `<div class="sh"><button data-back aria-label="Back">${icon('back')}</button><h2>Settings</h2></div>
+      html: `${back(t('Settings'))}
+        <label class="toggle"><span>${t('Language')}</span><span class="seg" id="lg">${[['auto', t('Automatic')], ['en', 'English'], ['de', 'Deutsch']].map(([v, n]) => `<button data-v="${v}" class="${langNow === v ? 'on' : ''}">${n}</button>`).join('')}</span></label>
         ${tg('sound', 'Sound effects')}
         ${tg('dayNight', 'Day & night cycle', 'Windows and street lights come on after dusk.')}
         ${tg('confirmBuild', 'Confirm placements', 'Shows ✓ / ✕ before a building is placed by touch.')}
         ${tg('disasters', 'Building fires', 'Random fires that fire stations fight.')}
-        <label class="toggle"><span>Autosave</span><span class="seg" id="as">${[30, 60, 120, 300].map((v) => `<button data-v="${v}" class="${st.autosave === v ? 'on' : ''}">${v < 60 ? v + 's' : v / 60 + 'm'}</button>`).join('')}</span></label>
-        <label class="toggle"><span>Graphics</span><span class="seg" id="q">${['high', 'low'].map((v) => `<button data-v="${v}" class="${st.quality === v ? 'on' : ''}">${v === 'high' ? 'High' : 'Battery saver'}</button>`).join('')}</span></label>
-        <div class="note">${standalone ? '<b>Installed.</b> Meridian is running as a home-screen app, so your saves are kept.' :
-          '<b>Install on iPad:</b> tap the Share button in Safari, then <b>Add to Home Screen</b>. Meridian then opens full-screen, works offline, and Safari will not clear your saved cities.'}</div>`,
+        <label class="toggle"><span>${t('Autosave')}</span><span class="seg" id="as">${[30, 60, 120, 300].map((v) => `<button data-v="${v}" class="${st.autosave === v ? 'on' : ''}">${v < 60 ? v + 's' : v / 60 + ' min'}</button>`).join('')}</span></label>
+        <label class="toggle"><span>${t('Graphics')}</span><span class="seg" id="q">${['high', 'low'].map((v) => `<button data-v="${v}" class="${st.quality === v ? 'on' : ''}">${v === 'high' ? t('High') : t('Battery saver')}</button>`).join('')}</span></label>
+        <div class="note">${standalone ? t('<b>Installed.</b> Meridian is running as a home-screen app, so your saves are kept.')
+          : t('<b>Install on iPad:</b> tap the Share button in Safari, then <b>Add to Home Screen</b>. Meridian then opens full-screen, works offline, and Safari will not clear your saved cities.')}</div>`,
       bind(el) {
         el.querySelectorAll('[data-set]').forEach((c) => c.onchange = () => { st[c.dataset.set] = c.checked; store.setSettings(st); setSound(st.sound); Object.assign(settings, st); sfx.tap(); });
         const seg = (id, key, num) => el.querySelectorAll(`#${id} button`).forEach((b) => b.onclick = () => { st[key] = num ? +b.dataset.v : b.dataset.v; store.setSettings(st); el.querySelectorAll(`#${id} button`).forEach((x) => x.classList.toggle('on', x === b)); sfx.tap(); });
         seg('as', 'autosave', true); seg('q', 'quality', false);
+        el.querySelectorAll('#lg button').forEach((b) => b.onclick = () => {
+          st.lang = b.dataset.v; store.setSettings(st); Object.assign(settings, st);
+          initLang(st.lang); frame(); current = null; show('settings');
+        });
       },
     };
   },
 
   guide() {
+    const p = (s) => `<p>${t(s)}</p>`;
+    const li = (s) => `<li>${t(s)}</li>`;
     return {
-      html: `<div class="sh"><button data-back aria-label="Back">${icon('back')}</button><h2>Field guide</h2></div>
+      html: `${back(t('Field guide'))}
       <div class="guide">
-        <h3>Touch controls</h3>
-        <div class="gest"><div><b>Two fingers</b>Pan and pinch-zoom, any time</div><div><b>One finger</b>Draw roads, paint zones, place buildings</div>
-        <div><b>Look tool</b>One finger pans; tap a building to inspect it</div><div><b>Data views</b>Power, water, land value, crime and more</div></div>
-        <h3>Your first ten minutes</h3>
+        <h3>${t('Touch controls')}</h3>
+        <div class="gest"><div><b>${t('Two fingers')}</b>${t('Pan and pinch-zoom, any time')}</div><div><b>${t('One finger')}</b>${t('Draw roads, paint zones, place buildings')}</div>
+        <div><b>${t('Look tool')}</b>${t('One finger pans; tap a building to inspect it')}</div><div><b>${t('Data views')}</b>${t('Power, water, land value, crime, transit and more')}</div></div>
+        <h3>${t('Your first ten minutes')}</h3>
         <ol>
-          <li><b>Road</b> — drag a road in from the edge of the map. That edge link brings new residents in.</li>
-          <li><b>Zone</b> — paint residential (green), commercial (blue) and industrial (amber) lots within 3 tiles of a road.</li>
-          <li><b>Power</b> — place a coal plant or wind turbines. Power flows along roads and through neighbouring lots; use power lines to reach a distant plant.</li>
-          <li><b>Water</b> — build a pump beside water. Mains run under your roads. Medium and high density need it.</li>
-          <li><b>Services</b> — police, fire, clinics and schools raise approval and land value.</li>
+          ${li('<b>Road</b> — drag a road in from the edge of the map. That edge link brings new residents in.')}
+          ${li('<b>Zone</b> — paint residential (green), commercial (blue) and industrial (amber) lots within 3 tiles of a road.')}
+          ${li('<b>Power</b> — place a coal plant or wind turbines. Power flows along roads and through neighbouring lots; use power lines to reach a distant plant.')}
+          ${li('<b>Water</b> — build a pump beside water. Mains run under your roads. Medium and high density need it.')}
+          ${li('<b>Services</b> — police, fire, clinics and schools raise approval and land value.')}
         </ol>
-        <h3>Reading the city</h3>
+        <h3>${t('Hills and terrain')}</h3>
+        ${p('Roads and railways can climb gentle slopes. Buildings on uneven ground stand on stone foundations. Use the Terrain tools to raise, lower or level land. Hilltops with a view raise land value.')}
+        <h3>${t('Public transport')}</h3>
         <ul>
-          <li>The <b>R C I</b> bars show demand. Zone more of whatever is high.</li>
-          <li>Buildings upgrade when <b>land value</b> and services are good, and decline near pollution and crime.</li>
-          <li>Four high-density towers side by side can merge into a landmark complex.</li>
-          <li>Growing population unlocks new buildings, denser zoning and grants.</li>
-          <li>Taxes above 9% slow growth; the Budget panel shows next month’s balance.</li>
+          ${li('<b>Buses</b> — build a bus depot, then place bus stops along streets.')}
+          ${li('<b>Trains</b> — lay a railway and put stations beside it. A line needs a second station or a link to the map edge.')}
+          ${li('<b>Highways</b> — fast four-lane roads. One that reaches the map edge brings more commuters and trade.')}
+          ${li('Transit takes cars off the streets, so traffic and pollution drop.')}
         </ul>
-        <h3>Saving</h3>
-        <p>Your city saves automatically every minute and whenever you leave the app. Export a file from <b>Your cities</b> for a backup.</p>
+        <h3>${t('Reading the city')}</h3>
+        <ul>
+          ${li('The <b>R C I</b> bars show demand. Zone more of whatever is high.')}
+          ${li('Buildings upgrade when <b>land value</b> and services are good, and decline near pollution and crime.')}
+          ${li('Four high-density towers side by side can merge into a landmark complex.')}
+          ${li('Growing population unlocks new buildings, denser zoning and grants.')}
+          ${li('Taxes above 9% slow growth; the Budget panel shows next month’s balance.')}
+        </ul>
+        <h3>${t('Saving')}</h3>
+        ${p('Your city saves automatically every minute and whenever you leave the app. Export a file from <b>Your cities</b> for a backup.')}
       </div>`,
     };
   },
 };
 
 show('home');
-store.requestPersistence().then((p) => { if (p) $('#storeNote').textContent = 'Saves are kept on this device'; });
+store.requestPersistence().then((ok) => { if (ok) { const n = $('#storeNote'); if (n) n.textContent = t('Saves are kept on this device'); } });

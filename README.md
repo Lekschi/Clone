@@ -1,7 +1,9 @@
 # Meridian
 
 An isometric city builder made for iPad. Lay roads, zone land, keep the power and water flowing,
-fund services, balance the budget, and grow a settlement into a skyline.
+fund services, run buses and trains, shape the hills, balance the budget, and grow a settlement
+into a skyline. Available in **English and German** (picked automatically from the device language,
+switchable in Settings).
 
 It is plain HTML/JavaScript with no build step and no downloaded assets. Every building, tree,
 road and icon is drawn in code, so the whole game is about 400 KB.
@@ -23,9 +25,10 @@ To run it locally: `python3 -m http.server` in this folder, then open `http://lo
 **Launcher** (`index.html`)
 - Live, animated city diorama behind the menu, cycling through day and night
 - New city wizard: name generator, 5 terrain types (Riverlands, Coastline, Lake District, Bay,
-  Open Plains), 3 map sizes, 3 starting budgets, live terrain preview
+  Open Plains), 3 landscapes (flat, rolling hills, mountains), 3 map sizes, 3 starting budgets,
+  live terrain preview
 - Saved cities with thumbnails, play / export / delete, import from file
-- Settings and a field guide
+- Settings (language, sound, lighting, autosave, graphics) and a field guide
 
 **Game** (`game.html`)
 - Zoning: residential, commercial and industrial lots in low, medium and high density. Buildings
@@ -35,13 +38,18 @@ To run it locally: `python3 -m http.server` in this folder, then open `http://lo
   are off the road network.
 - Services: police, fire, clinics, hospitals, schools, library, high school, university, each
   with a coverage radius and a funding level.
+- Terrain: hills and mountains with sloped roads and rail; buildings on slopes stand on stone
+  foundations. Raise, lower and level tools. Hilltop views raise land value.
+- Public transport: bus stops and depots (buses drive the streets), railways with bridges and level
+  crossings, train stations and a freight yard (animated trains), and four-lane highways. Transit
+  takes cars off the road; highway and rail links to the map edge raise demand.
 - Parks and landmarks: pocket parks, playgrounds, squares, pond garden, central park, sports
   ground, city hall, museum, stadium, observation spire
 - Simulation: demand for R/C/I, land value, pollution, crime, traffic, education, health,
   approval, unemployment, building fires, abandonment
 - Economy: per-zone taxes, department budgets, monthly ledger, loans, history graphs
 - Milestones (Settlement → Megacity) unlock buildings, denser zoning and cash grants
-- Data views: power, water, land value, pollution, crime, traffic and service coverage
+- Data views: power, water, land value, pollution, crime, traffic, transit and service coverage
 - Advisors and a news ticker, a building inspector, and a minimap
 - Day/night cycle with lit windows, street lights, headlights and aviation beacons. Animated
   traffic, smoke, steam, wind turbines and water.
@@ -68,6 +76,8 @@ js/render/buildings.js all building art
 js/render/sprites.js  lazy sprite cache with night and abandoned variants
 js/render/renderer.js camera, chunked ground cache, depth-sorted objects, traffic, particles
 js/ui/hud.js          toolbar, drawers, panels, inspector, ticker
+js/i18n.js            translation helper, number/currency/date formatting
+js/lang/de.js         German strings (keys are the English text)
 js/game.js            game loop, input, tools, saving
 js/launcher.js        launcher screens and backdrop
 ```

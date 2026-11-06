@@ -4,6 +4,7 @@ import {
   MILESTONES, DAYS_PER_MONTH, TIER_NAMES, ZONE_NAMES,
 } from '../data/defs.js';
 import { T_WATER, HIGHWAY } from './world.js';
+import { t, fmt, zoneName } from '../i18n.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
@@ -478,7 +479,7 @@ export class Sim {
     }
     for (const o of parts) w.removeBuilding(o, true);
     w.addBuilding({ kind: 'zone', x: b.x, y: b.y, w: 2, h: 2, zt: b.zt, tier: 6, occ: 0.4, built: 0, powered: true, watered: true });
-    w.emit('news', { text: `A new ${TIER_NAMES[b.zt][6].toLowerCase()} is rising downtown.`, x: b.x, y: b.y, tone: 'good' });
+    w.emit('news', { text: t('A new {b} is rising downtown.', { b: t(TIER_NAMES[b.zt][6]) }), x: b.x, y: b.y, tone: 'good' });
     return true;
   }
 
@@ -501,7 +502,7 @@ export class Sim {
         const base = Math.min(0.012, 0.0008 + this.bList.length * 0.0000025);
         if (rnd() < risk * base) {
           b.fire = 1; w.touch(i);
-          w.emit('news', { text: `Fire reported at ${b.def ? b.def.name : TIER_NAMES[b.zt][b.tier]}!`, x: b.x, y: b.y, tone: 'bad', kind: 'fire' });
+          w.emit('news', { text: t('Fire reported: {b}!', { b: b.def ? t(b.def.name) : t(TIER_NAMES[b.zt][b.tier]) }), x: b.x, y: b.y, tone: 'bad', kind: 'fire' });
         }
       }
     }
@@ -524,7 +525,7 @@ export class Sim {
       }
       if (b.fire > 22) {
         this.toRubble(b);
-        w.emit('news', { text: 'A building burned down.', x: b.x, y: b.y, tone: 'bad' });
+        w.emit('news', { text: t('A building burned down.'), x: b.x, y: b.y, tone: 'bad' });
       }
     }
   }
@@ -654,33 +655,33 @@ export class Sim {
       if (w.zoneD[i] >= 2 && !w.water[i]) noWaterMed++;
     }
     const total = zoneCount[1] + zoneCount[2] + zoneCount[3];
-    if (!total) a.push({ who: 'Planning', tone: 'info', text: 'Lay a road from the map edge, then zone homes, shops and industry along it.' });
-    if (!w.stats.outside && total) a.push({ who: 'Transport', tone: 'warn', text: 'No road reaches the map edge. Connect to the region so newcomers can arrive.' });
-    if (s.powerSupply === 0 && total) a.push({ who: 'Utilities', tone: 'bad', text: 'The city has no power plant. Zones will not develop without electricity.' });
-    else if (s.powerDemand > s.powerSupply) a.push({ who: 'Utilities', tone: 'bad', text: `Power shortage: ${s.powerDemand} MW needed, ${s.powerSupply} MW available.` });
-    else if (unpoweredZones > 4) a.push({ who: 'Utilities', tone: 'warn', text: `${unpoweredZones} zoned lots have no power. Connect them with power lines.` });
-    if (noRoad > 4) a.push({ who: 'Planning', tone: 'warn', text: `${noRoad} zoned lots are too far from a road (max 3 tiles).` });
-    if (s.pop > 150 && s.waterSupply === 0) a.push({ who: 'Utilities', tone: 'warn', text: 'No water supply. Build a pump by the water and connect it to a road; mains run under the streets.' });
-    else if (s.waterDemand > s.waterSupply && s.pop > 150) a.push({ who: 'Utilities', tone: 'bad', text: `Water shortage: ${s.waterDemand} kgal needed, ${s.waterSupply} kgal supplied.` });
-    if (noWaterMed > 4) a.push({ who: 'Utilities', tone: 'warn', text: 'Medium and high density zones need running water to develop.' });
-    if (s.pop > 500 && s.crimeAvg > 70) a.push({ who: 'Police', tone: 'warn', text: 'Crime is rising. Residents want more police coverage.' });
-    if (s.pollAvg > 70) a.push({ who: 'Environment', tone: 'warn', text: 'Pollution is hurting land value. Plant trees or move industry away from homes.' });
-    if (s.pop > 800 && s.edu < 0.3) a.push({ who: 'Education', tone: 'info', text: 'Few residents are near a school. Education unlocks cleaner industry and offices.' });
-    if (s.pop > 800 && s.health < 0.3) a.push({ who: 'Health', tone: 'info', text: 'Health coverage is thin. Clinics keep residents happy.' });
-    if (s.unemployment > 0.15) a.push({ who: 'Economy', tone: 'warn', text: `Unemployment at ${Math.round(s.unemployment * 100)}%. Zone more commercial or industrial land.` });
-    if (w.demand[1] > 0.5 && zoneCount[1] - this.countBuilt(1) < 6) a.push({ who: 'Planning', tone: 'info', text: 'Strong demand for housing. Zone more residential land.' });
-    if (w.demand[2] > 0.5 && zoneCount[2] - this.countBuilt(2) < 4) a.push({ who: 'Planning', tone: 'info', text: 'Shops are in demand. Zone more commercial land.' });
-    if (w.demand[3] > 0.5 && zoneCount[3] - this.countBuilt(3) < 4) a.push({ who: 'Planning', tone: 'info', text: 'Industry wants to move in. Zone more industrial land.' });
-    if (s.trafficAvg > 140) a.push({ who: 'Transport', tone: 'warn', text: 'Streets are congested. Add bus stops, rail or a highway.' });
+    if (!total) a.push({ who: 'Planning', tone: 'info', text: t('Lay a road from the map edge, then zone homes, shops and industry along it.') });
+    if (!w.stats.outside && total) a.push({ who: 'Transport', tone: 'warn', text: t('No road reaches the map edge. Connect to the region so newcomers can arrive.') });
+    if (s.powerSupply === 0 && total) a.push({ who: 'Utilities', tone: 'bad', text: t('The city has no power plant. Zones will not develop without electricity.') });
+    else if (s.powerDemand > s.powerSupply) a.push({ who: 'Utilities', tone: 'bad', text: t('Power shortage: {a} MW needed, {b} MW available.', { a: fmt(s.powerDemand), b: fmt(s.powerSupply) }) });
+    else if (unpoweredZones > 4) a.push({ who: 'Utilities', tone: 'warn', text: t('{n} zoned lots have no power. Connect them with roads or power lines.', { n: unpoweredZones }) });
+    if (noRoad > 4) a.push({ who: 'Planning', tone: 'warn', text: t('{n} zoned lots are too far from a road (max 3 tiles).', { n: noRoad }) });
+    if (s.pop > 150 && s.waterSupply === 0) a.push({ who: 'Utilities', tone: 'warn', text: t('No water supply. Build a pump by the water and connect it to a road; mains run under the streets.') });
+    else if (s.waterDemand > s.waterSupply && s.pop > 150) a.push({ who: 'Utilities', tone: 'bad', text: t('Water shortage: {a} kgal needed, {b} kgal supplied.', { a: fmt(s.waterDemand), b: fmt(s.waterSupply) }) });
+    if (noWaterMed > 4) a.push({ who: 'Utilities', tone: 'warn', text: t('Medium and high density zones need running water to develop.') });
+    if (s.pop > 500 && s.crimeAvg > 70) a.push({ who: 'Police', tone: 'warn', text: t('Crime is rising. Residents want more police coverage.') });
+    if (s.pollAvg > 70) a.push({ who: 'Environment', tone: 'warn', text: t('Pollution is hurting land value. Plant trees or move industry away from homes.') });
+    if (s.pop > 800 && s.edu < 0.3) a.push({ who: 'Education', tone: 'info', text: t('Few residents are near a school. Education unlocks cleaner industry and offices.') });
+    if (s.pop > 800 && s.health < 0.3) a.push({ who: 'Health', tone: 'info', text: t('Health coverage is thin. Clinics keep residents happy.') });
+    if (s.unemployment > 0.15) a.push({ who: 'Economy', tone: 'warn', text: t('Unemployment at {p}%. Zone more commercial or industrial land.', { p: Math.round(s.unemployment * 100) }) });
+    if (w.demand[1] > 0.5 && zoneCount[1] - this.countBuilt(1) < 6) a.push({ who: 'Planning', tone: 'info', text: t('Strong demand for housing. Zone more residential land.') });
+    if (w.demand[2] > 0.5 && zoneCount[2] - this.countBuilt(2) < 4) a.push({ who: 'Planning', tone: 'info', text: t('Shops are in demand. Zone more commercial land.') });
+    if (w.demand[3] > 0.5 && zoneCount[3] - this.countBuilt(3) < 4) a.push({ who: 'Planning', tone: 'info', text: t('Industry wants to move in. Zone more industrial land.') });
+    if (s.trafficAvg > 140) a.push({ who: 'Transport', tone: 'warn', text: t('Streets are congested. Add bus stops, rail or a highway.') });
     const bt = [...w.buildings.values()];
-    if (bt.some((b) => b.kind === 'busstop') && !s.busDepot) a.push({ who: 'Transport', tone: 'warn', text: 'Bus stops need a working bus depot next to a road.' });
-    if (bt.some((b) => b.kind === 'station' && !b.active)) a.push({ who: 'Transport', tone: 'warn', text: 'A train station is idle. Link its line to another station or to the map edge.' });
-    if (bt.some((b) => b.kind === 'freight' && !b.active)) a.push({ who: 'Transport', tone: 'warn', text: 'The freight yard needs a railway that reaches the map edge.' });
-    if (s.pop > 3000 && !s.hwyOut) a.push({ who: 'Transport', tone: 'info', text: 'A highway to the map edge would bring more commuters and trade.' });
-    if (w.funds < 0) a.push({ who: 'Finance', tone: 'bad', text: 'The treasury is in the red. Raise taxes, cut budgets or take a loan.' });
+    if (bt.some((b) => b.kind === 'busstop') && !s.busDepot) a.push({ who: 'Transport', tone: 'warn', text: t('Bus stops need a working bus depot next to a road.') });
+    if (bt.some((b) => b.kind === 'station' && !b.active)) a.push({ who: 'Transport', tone: 'warn', text: t('A train station is idle. Link its line to another station or to the map edge.') });
+    if (bt.some((b) => b.kind === 'freight' && !b.active)) a.push({ who: 'Transport', tone: 'warn', text: t('The freight yard needs a railway that reaches the map edge.') });
+    if (s.pop > 3000 && !s.hwyOut) a.push({ who: 'Transport', tone: 'info', text: t('A highway to the map edge would bring more commuters and trade.') });
+    if (w.funds < 0) a.push({ who: 'Finance', tone: 'bad', text: t('The treasury is in the red. Raise taxes, cut budgets or take a loan.') });
     const avgTax = (w.taxes[1] + w.taxes[2] + w.taxes[3]) / 3;
-    if (avgTax > 13) a.push({ who: 'Finance', tone: 'warn', text: 'High taxes are driving people away.' });
-    if (!a.length) a.push({ who: 'Mayor’s office', tone: 'good', text: 'Things are running smoothly. Keep growing!' });
+    if (avgTax > 13) a.push({ who: 'Finance', tone: 'warn', text: t('High taxes are driving people away.') });
+    if (!a.length) a.push({ who: 'Mayor’s office', tone: 'good', text: t('Things are running smoothly. Keep growing!') });
     this.advice = a;
   }
 
@@ -691,7 +692,7 @@ export class Sim {
 
 export function describeBuilding(w, b) {
   if (!b) return null;
-  if (b.kind === 'zone') return { title: TIER_NAMES[b.zt][b.tier], sub: `${ZONE_NAMES[b.zt]} · tier ${b.tier}` };
-  if (b.kind === 'rubble') return { title: 'Rubble', sub: 'Clears on its own, or bulldoze it' };
-  return { title: b.def.name, sub: b.def.desc };
+  if (b.kind === 'zone') return { title: t(TIER_NAMES[b.zt][b.tier]), sub: `${zoneName(b.zt)} · ${t('tier {n}', { n: b.tier })}` };
+  if (b.kind === 'rubble') return { title: t('Rubble'), sub: t('Clears on its own, or bulldoze it') };
+  return { title: t(b.def.name), sub: t(b.def.desc) };
 }
