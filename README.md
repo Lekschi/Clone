@@ -49,6 +49,11 @@ npm run server         # Spiel + Online-Speicher: http://localhost:8080
 
 ### Online stellen
 
+- **Kostenlos auf claude.ai (empfohlen)**: `npm run artifact` erzeugt `artifact/` (Seite + Dateien); veröffentlicht
+  als Claude-Artifact speichert das Spiel jeden Spielstand privat im Claude-Konto des Spielers, und der
+  Weltmarkt läuft über die gemeinsame Datenbank des Artifacts. Mitspieler brauchen Zugriff mindestens als
+  „Mitwirkende/r“ (Contributor), um online zu speichern; wer nur ansehen darf, spielt mit lokalem Speicher.
+
 - **Mit Online-Speicherung**: den Ordner auf einem Node-Host (z. B. Render, Railway, Fly.io, eigener
   Server) mit `npm ci && npm run build && npm run server` starten, oder das `Dockerfile` verwenden.
   Spielstände liegen in `server/data/` (bzw. `DATA_DIR`).

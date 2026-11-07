@@ -5,6 +5,7 @@ import { HOUSE_POP, HOUSE_NAMES, xpForNext, maxHouseLevelFor, skipPrice } from '
 import { questProgress } from '../game/quests.js';
 import { syncCode, useSyncCode, saveSettings, clearLocal } from '../save/save.js';
 import { setSound, sfx } from '../audio.js';
+import { inClaude, downloadsApi } from '../save/claude.js';
 
 const CAT_COLOR = { res: '#ff8a5b', util: '#f2b024', service: '#4d8de6', industry: '#8c9aab', commerce: '#ff6a5c', leisure: '#53b04c', fixed: '#7b6cd9' };
 
@@ -477,10 +478,10 @@ export class Panels {
         <div class="kv"><span>Tageszeit</span><div class="segs">${opt('daytime', 'cycle', 'Tag & Nacht')}${opt('daytime', 'day', 'Immer Tag')}${opt('daytime', 'real', 'Echtzeit')}</div></div>
         <div class="box"><h3>${icon('cloud')} Online-Speicherung</h3>
           <p class="small">${statusText}${sv.lastCloud ? ` · zuletzt ${new Date(sv.lastCloud).toLocaleTimeString('de-DE')}` : ''}</p>
-          <p class="muted small">Dein Spielstand wird automatisch gespeichert. Mit dem Sync-Code spielst du auf einem anderen Gerät weiter.</p>
+          ${inClaude() ? `<p class="muted small">Dein Spielstand wird automatisch in deinem Claude-Konto gespeichert. Öffne denselben Link auf einem anderen Gerät und melde dich an – du spielst dort weiter.</p>` : `<p class="muted small">Dein Spielstand wird automatisch gespeichert. Mit dem Sync-Code spielst du auf einem anderen Gerät weiter.</p>
           <div class="kv"><span>Dein Sync-Code</span><code class="code">${syncCode()}</code><button class="btn ghost small" data-act="copyCode">Kopieren</button></div>
           <div class="kv"><span>Code eingeben</span><input class="inp" id="codeIn" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off" spellcheck="false"><button class="btn ghost small" data-act="useCode">Laden</button></div>
-          <div class="kv"><span>Server</span><input class="inp" id="serverIn" placeholder="automatisch" value="${esc(st.server || '')}"></div>
+          <div class="kv"><span>Server</span><input class="inp" id="serverIn" placeholder="automatisch" value="${esc(st.server || '')}"></div>`}
           <button class="btn primary small" data-act="syncNow">Jetzt sichern</button>
         </div>
         <div class="box"><h3>Spielstand</h3><div class="row">
@@ -565,9 +566,9 @@ export class Panels {
         if (g.listSale(c.form.item, c.form.qty, c.form.price)) { sfx.coin(); c.form = null; }
         break;
       case 'gNew': c.picking = true; c.global = true; break;
-      case 'gBuy': { const o = app.gm.offers.find((x) => x.id === Number(arg)); if (o) { app.gm.buy(o); sfx.coin(); } break; }
-      case 'gCollect': { const o = app.gm.mine.find((x) => x.id === Number(arg)); if (o) { app.gm.collect(o); sfx.coin(); } break; }
-      case 'gCancel': { const o = app.gm.mine.find((x) => x.id === Number(arg)); if (o) app.gm.cancel(o); break; }
+      case 'gBuy': { const o = app.gm.offers.find((x) => String(x.id) === arg); if (o) { app.gm.buy(o); sfx.coin(); } break; }
+      case 'gCollect': { const o = app.gm.mine.find((x) => String(x.id) === arg); if (o) { app.gm.collect(o); sfx.coin(); } break; }
+      case 'gCancel': { const o = app.gm.mine.find((x) => String(x.id) === arg); if (o) app.gm.cancel(o); break; }
       case 'collectSale': if (g.collectSale(Number(arg))) sfx.coin(); break;
       case 'cancelSale': g.cancelSale(Number(arg)); break;
       case 'buySaleSlot': if (g.buySalesSlot()) sfx.coin(); break;
@@ -593,6 +594,14 @@ export class Panels {
       }
       case 'syncNow': app.save.saveLocal(); app.save.pushCloud(); g.toast('Gespeichert', 'good'); break;
       case 'export': {
+        const fname = `${g.state.name.replace(/[^\wäöüÄÖÜß-]+/g, '_')}.json`;
+        if (inClaude()) {
+          downloadsApi().then((d) => {
+            if (!d) { g.toast('Export ist hier nicht verfügbar', 'bad'); return; }
+            d.save({ filename: fname, data: JSON.stringify(g.state) }).then(() => g.toast('Spielstand exportiert', 'good')).catch((e) => { if (e?.code !== 'declined') g.toast('Export nicht möglich', 'bad'); });
+          });
+          return;
+        }
         const blob = new Blob([JSON.stringify(g.state)], { type: 'application/json' });
         const a2 = document.createElement('a');
         a2.href = URL.createObjectURL(blob);

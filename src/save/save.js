@@ -1,3 +1,4 @@
+import { inClaude, claudeBackend, saveDoc } from './claude.js';
 // Saving: instant local autosave plus online sync to a save server.
 //
 // Local: every change is written to localStorage (debounced) and on page hide.
@@ -77,7 +78,7 @@ export class SaveManager {
     document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
     window.addEventListener('pagehide', flush);
     setInterval(() => { if (this.dirty) this.saveLocal(); }, 4000);
-    setInterval(() => { if (this.cloudDirty) this.pushCloud(); }, 20000);
+    setInterval(() => { if (this.cloudDirty) this.pushCloud(); }, this.claude ? 15000 : 20000);
   }
 
   onStatus(fn) { this.listeners.add(fn); }
@@ -111,7 +112,18 @@ export class SaveManager {
     } catch { return false; }
   }
 
+  get claude() { return inClaude(); }
+
   async fetchCloud() {
+    if (this.claude) {
+      const b = await claudeBackend();
+      if (!b.ok) return { error: true };
+      try {
+        const snap = await saveDoc(b).get();
+        if (!snap.exists) return { none: true };
+        return { save: JSON.parse(snap.data().json) };
+      } catch { return { error: true }; }
+    }
     const a = account();
     try {
       const r = await fetch(`${this.base()}/save/${encodeURIComponent(a.id)}`, { headers: { 'X-Key': a.key }, cache: 'no-store' });
@@ -123,6 +135,7 @@ export class SaveManager {
 
   async pushCloud(beacon = false) {
     if (this.status === 'noserver') return;
+    if (this.claude) return this.pushClaude();
     const a = account();
     const s = this.game.state;
     s.updated = Date.now();
@@ -144,9 +157,45 @@ export class SaveManager {
     }
   }
 
+  // claude.ai: one private document per player, written one at a time.
+  async pushClaude() {
+    const b = await claudeBackend();
+    if (!b.ok || this.inflight) return;
+    const s = this.game.state;
+    s.updated = Date.now();
+    const json = JSON.stringify(s);
+    if (json.length > 250000) { this.setStatus('error'); return; }
+    this.inflight = true;
+    this.cloudDirty = false;
+    this.setStatus('syncing');
+    try {
+      await saveDoc(b).set({ v: 1, updated: s.updated, json });
+      this.lastCloud = Date.now();
+      this.setStatus('synced');
+    } catch (e) {
+      this.cloudDirty = true;
+      if (e && e.code === 'invalid_argument') { b.ok = false; this.setStatus('noserver'); } else this.setStatus('error');
+    } finally {
+      this.inflight = false;
+    }
+  }
+
   // Decide which save to start from. Returns a state object or null.
   static async resolveStart(settings) {
     const local = loadLocal();
+    if (inClaude()) {
+      const b = await claudeBackend();
+      let cloud = null;
+      if (b.ok) {
+        try {
+          const snap = await Promise.race([saveDoc(b).get(), new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 9000))]);
+          if (snap.exists) cloud = JSON.parse(snap.data().json);
+        } catch { /* offline: start from the local copy */ }
+      }
+      let state = local;
+      if (cloud && cloud.buildings && (!local || (cloud.updated || 0) > (local.updated || 0))) state = cloud;
+      return { state, server: b.ok, fromCloud: state === cloud && !!cloud, claude: true };
+    }
     const tmp = { settings, game: { state: local }, base: SaveManager.prototype.base };
     const probe = SaveManager.prototype.probe.bind(tmp);
     const fetchCloud = SaveManager.prototype.fetchCloud.bind(tmp);

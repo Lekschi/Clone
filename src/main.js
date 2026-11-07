@@ -12,6 +12,7 @@ import { Input } from './ui/input.js';
 import { h, num, icon, esc } from './ui/dom.js';
 import { SaveManager, loadSettings, account } from './save/save.js';
 import { GlobalMarket } from './save/net.js';
+import { inClaude, claudeBackend, saveDoc } from './save/claude.js';
 import { setSound, sfx } from './audio.js';
 
 const OPEN_PANEL = { house: 'house', storage: 'storage', cityhall: 'cityhall', market: 'market', cargo: 'cargo' };
@@ -68,7 +69,7 @@ class App {
     if (server) this.save.pushCloud();
     this.panels = new Panels(this);
     this.gm = new GlobalMarket(this);
-    if (server) setTimeout(() => { this.gm.available = true; this.gm.refresh(true); }, 2500);
+    if (server) setTimeout(() => this.gm.enable(), 2500);
     this.build = new BuildMenu(this);
     this.modebar = new ModeBar(this);
     this.bubbles = new Bubbles(this);
@@ -105,7 +106,7 @@ class App {
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
-    if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('./sw.js').catch(() => {});
+    if ('serviceWorker' in navigator && location.protocol === 'https:' && !inClaude()) navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 
   foundPart(id) {
@@ -406,8 +407,11 @@ class App {
   // ---------------------------------------------------------------- save management
   async replaceState(s) {
     s.updated = Date.now();
-    localStorage.setItem('neustadt.save.v1', JSON.stringify(s));
-    await this.pushRaw(s);
+    try { localStorage.setItem('neustadt.save.v1', JSON.stringify(s)); } catch { /* storage blocked */ }
+    if (inClaude()) {
+      const b = await claudeBackend();
+      if (b.ok) { try { await saveDoc(b).set({ v: 1, updated: s.updated, json: JSON.stringify(s) }); } catch { /* keep local */ } }
+    } else await this.pushRaw(s);
     location.reload();
   }
 

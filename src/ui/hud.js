@@ -5,6 +5,7 @@ import { BUILDINGS, BUILD_ORDER } from '../data/buildings.js';
 import { UTIL_NAMES } from '../data/buildings.js';
 import { sfx } from '../audio.js';
 import { questProgress } from '../game/quests.js';
+import { inClaude as inClaudeHud } from '../save/claude.js';
 
 export class Hud {
   constructor(app) {
@@ -103,7 +104,7 @@ export class Hud {
 
   syncStatus(s) {
     const el = $('.sync', this.el);
-    const map = { synced: ['ok', 'Online gesichert'], syncing: ['busy', 'Synchronisiere…'], error: ['err', 'Offline – lokal gesichert'], noserver: ['local', 'Lokal gesichert'], offline: ['local', 'Lokal gesichert'] };
+    const map = { synced: ['ok', inClaudeHud() ? 'Im Claude-Konto gesichert' : 'Online gesichert'], syncing: ['busy', 'Synchronisiere…'], error: ['err', 'Offline – lokal gesichert'], noserver: ['local', 'Lokal gesichert'], offline: ['local', 'Lokal gesichert'] };
     const [cls, text] = map[s] || map.offline;
     el.className = `sync ${cls}`;
     el.innerHTML = `${icon('cloud')}<span>${text}</span>`;
