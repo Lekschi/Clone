@@ -471,7 +471,8 @@ export class Panels {
       title: 'Einstellungen', icon: icon('gear'), color: '#5a6b7d',
       body: `<div class="kv"><span>Stadtname</span><input class="inp" id="cityName" value="${esc(g.state.name)}" maxlength="28"></div>
         <div class="kv"><span>Ton</span><div class="segs">${opt('sound', true, 'An')}${opt('sound', false, 'Aus')}</div></div>
-        <div class="kv"><span>Grafik</span><div class="segs">${opt('quality', 'high', 'Hoch')}${opt('quality', 'low', 'Schnell')}</div></div>
+        <div class="kv"><span>Grafik</span><div class="segs">${opt('quality', 'ultra', 'Ultra')}${opt('quality', 'high', 'Hoch')}${opt('quality', 'low', 'Schnell')}</div></div>
+        <div class="kv"><span>Wetter</span><div class="segs">${opt('weather', true, 'Wechselnd')}${opt('weather', false, 'Immer klar')}</div></div>
         <div class="kv"><span>Schatten</span><div class="segs">${opt('shadows', true, 'An')}${opt('shadows', false, 'Aus')}</div></div>
         <div class="kv"><span>Tageszeit</span><div class="segs">${opt('daytime', 'cycle', 'Tag & Nacht')}${opt('daytime', 'day', 'Immer Tag')}${opt('daytime', 'real', 'Echtzeit')}</div></div>
         <div class="box"><h3>${icon('cloud')} Online-Speicherung</h3>

@@ -322,7 +322,7 @@ function waterWorks(b) {
 function septic(b) {
   lot(b, 1, 1, 'grass');
   b.cyl(0.32, 0.32, 0.1, M.color('#bdb8ae'), 0, B0, -0.08, 24);
-  b.cyl(0.28, 0.28, 0.105, M.color('#6f6a3e', { rough: 0.3 }), 0, B0, -0.08, 24);
+  b.cyl(0.28, 0.28, 0.105, M.water('dirty'), 0, B0, -0.08, 24);
   b.box(0.04, 0.04, 0.6, M.color('#8f969c', { metal: 0.5 }), 0, B0 + 0.11, -0.08);
   b.box(0.24, 0.16, 0.16, M.facade('panel', '#e0ddd5'), 0.28, B0, 0.33);
 }
@@ -331,7 +331,7 @@ function sewagePlant(b) {
   lot(b, 2, 2, 'concrete');
   for (const [x, z] of [[-0.5, -0.5], [0.1, -0.55], [-0.5, 0.15]]) {
     b.cyl(0.3, 0.3, 0.1, M.color('#c7c3ba'), x, B0, z, 24);
-    b.cyl(0.27, 0.27, 0.105, M.color('#62703f', { rough: 0.3 }), x, B0, z, 24);
+    b.cyl(0.27, 0.27, 0.105, M.water('dirty'), x, B0, z, 24);
     b.box(0.03, 0.03, 0.56, M.color('#9aa0a6'), x, B0 + 0.12, z);
   }
   for (const x of [0.4, 0.7]) {
@@ -345,7 +345,7 @@ function ecoSewage(b) {
   lot(b, 2, 2, 'grass');
   for (const [x, z] of [[-0.5, -0.45], [0.35, -0.45], [-0.5, 0.35]]) {
     b.box(0.75, 0.06, 0.6, M.color('#bdb8ae'), x, B0, z);
-    b.box(0.68, 0.065, 0.53, M.color('#4e9c8e', { rough: 0.2 }), x, B0, z);
+    b.box(0.68, 0.065, 0.53, M.water('pool'), x, B0, z);
     for (let i = 0; i < 5; i++) b.cyl(0.015, 0.015, 0.12, M.color('#5f8f3e'), x - 0.25 + i * 0.12, B0, z + 0.2, 4);
   }
   b.box(0.6, 0.35, 0.55, { side: M.facade('modern', '#e1efe4'), top: M.roof('field') }, 0.45, B0, 0.45);
@@ -753,7 +753,7 @@ function plaza(b, v) {
   b.cyl(0.4, 0.4, 0.072, M.water(), 0, B0, 0, 32);
   b.cyl(0.08, 0.1, 0.22, M.color('#d8d2c6'), 0, B0, 0, 12);
   b.cyl(0.16, 0.16, 0.03, M.color('#d8d2c6'), 0, B0 + 0.22, 0, 16);
-  b.sphere(0.05, M.color('#cfe9f7', { opacity: 0.6, rough: 0.1 }), 0, B0 + 0.3, 0, 1, 1.6, 1, 1);
+  b.fountain.push(new THREE.Vector3(0, B0 + 0.25, 0));
   for (const [x, z] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) { tree(b, x, z, 1.0, 0, v + x * 10); b.cyl(0.13, 0.13, 0.03, M.color('#cfc8bb'), x, B0, z, 12); }
   for (const a of [0, 1, 2, 3]) bench(b, Math.cos(a * Math.PI / 2) * 0.62, Math.sin(a * Math.PI / 2) * 0.62, a * Math.PI / 2 + Math.PI / 2);
   for (const [x, z] of [[-0.4, 0.75], [0.4, -0.75]]) lampPost(b, x, z);
@@ -763,6 +763,7 @@ function cityPark(b, v) {
   lot(b, 3, 3, 'grass', '#d9f0c4');
   b.cyl(0.65, 0.6, 0.02, M.color('#8f8c6a'), 0.35, B0, 0.3, 28);
   b.cyl(0.6, 0.6, 0.025, M.water(), 0.35, B0, 0.3, 28);
+  b.fountain.push(new THREE.Vector3(0.35, B0 + 0.04, 0.3));
   b.box(2.9, 0.01, 0.1, M.ground('sand'), 0, B0, -0.7);
   b.box(0.1, 0.01, 2.9, M.ground('sand'), -0.6, B0, 0);
   for (let i = 0; i < 16; i++) {
@@ -1049,6 +1050,7 @@ export function makeModel(type, level = 1, v = 0) {
   inst.userData.rotors = [];
   inst.traverse((o) => { if (o.name === 'rotor') inst.userData.rotors.push(o); });
   inst.userData.smoke = proto.userData.smoke;
+  inst.userData.fountain = proto.userData.fountain;
   return inst;
 }
 

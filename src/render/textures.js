@@ -23,6 +23,29 @@ function toTex(c, { repeat = true, srgb = true } = {}) {
   return t;
 }
 
+// Normal map from a canvas, treating brightness as height (Sobel filter).
+export function normalFromCanvas(src, strength = 2, invert = false) {
+  const w = src.width, h = src.height;
+  const sctx = src.getContext('2d');
+  const d = sctx.getImageData(0, 0, w, h).data;
+  const H = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) H[i] = (d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11) / 255 * (invert ? -1 : 1);
+  const c = canvas(w, h), ctx = c.getContext('2d');
+  const out = ctx.createImageData(w, h);
+  const at = (x, y) => H[((y + h) % h) * w + ((x + w) % w)];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = (at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1)) - (at(x - 1, y - 1) + 2 * at(x - 1, y) + at(x - 1, y + 1));
+    const dy = (at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1)) - (at(x - 1, y - 1) + 2 * at(x, y - 1) + at(x + 1, y - 1));
+    let nx = -dx * strength, ny = dy * strength, nz = 1;
+    const l = Math.hypot(nx, ny, nz);
+    nx /= l; ny /= l; nz /= l;
+    const o = (y * w + x) * 4;
+    out.data[o] = (nx * 0.5 + 0.5) * 255; out.data[o + 1] = (ny * 0.5 + 0.5) * 255; out.data[o + 2] = (nz * 0.5 + 0.5) * 255; out.data[o + 3] = 255;
+  }
+  ctx.putImageData(out, 0, 0);
+  return toTex(c, { srgb: false });
+}
+
 function memo(key, fn) {
   if (!cache.has(key)) cache.set(key, fn());
   return cache.get(key);
@@ -42,32 +65,35 @@ export function grassTexture() {
   return memo('grass', () => {
     const S = 512, c = canvas(S), ctx = c.getContext('2d');
     const rnd = mulberry32(7);
-    ctx.fillStyle = '#5f9a3e';
+    ctx.fillStyle = '#5a7f38';
     ctx.fillRect(0, 0, S, S);
-    // soft patches
-    for (let i = 0; i < 90; i++) {
-      const x = rnd() * S, y = rnd() * S, r = 20 + rnd() * 70;
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-      const tone = rnd() < 0.5 ? 'rgba(120,170,70,0.22)' : 'rgba(60,110,40,0.22)';
-      g.addColorStop(0, tone); g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
-      for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) { ctx.save(); ctx.translate(ox, oy); ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.restore(); }
+    // soft patches: lush, dry and earthy areas
+    const tones = ['rgba(118,150,62,0.28)', 'rgba(70,104,42,0.3)', 'rgba(150,150,82,0.2)', 'rgba(96,88,52,0.14)', 'rgba(84,124,52,0.3)'];
+    for (let i = 0; i < 140; i++) {
+      const x = rnd() * S, y = rnd() * S, r = 14 + rnd() * 80;
+      const tone = tones[Math.floor(rnd() * tones.length)];
+      for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) {
+        const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+        g.addColorStop(0, tone); g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x + ox, y + oy, r, 0, 7); ctx.fill();
+      }
     }
     // blades
-    for (let i = 0; i < 9000; i++) {
+    for (let i = 0; i < 16000; i++) {
       const x = rnd() * S, y = rnd() * S;
-      const l = 40 + rnd() * 40;
-      ctx.strokeStyle = `hsla(${88 + rnd() * 30},${40 + rnd() * 25}%,${l}%,0.35)`;
+      const l = 24 + rnd() * 36;
+      ctx.strokeStyle = `hsla(${70 + rnd() * 38},${28 + rnd() * 26}%,${l}%,0.42)`;
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (rnd() - 0.5) * 3, y - 2 - rnd() * 4); ctx.stroke();
     }
-    // tiny flowers
-    for (let i = 0; i < 120; i++) {
-      ctx.fillStyle = ['#f4f1d0', '#f7d76a', '#e9a5c8', '#ffffff'][Math.floor(rnd() * 4)];
-      ctx.globalAlpha = 0.5;
+    // clover, small flowers and bare soil specks
+    for (let i = 0; i < 160; i++) {
+      ctx.fillStyle = ['#e9e4c4', '#e8cf5a', '#c99ab8', '#f4f4ee', '#7a6a48'][Math.floor(rnd() * 5)];
+      ctx.globalAlpha = 0.45;
       ctx.fillRect(rnd() * S, rnd() * S, 2, 2);
     }
     ctx.globalAlpha = 1;
+    cache.set('groundCanvas-grass', c);
     return toTex(c);
   });
 }
@@ -110,6 +136,7 @@ export function pavingTexture() {
       ctx.fillRect(x * s + 1, y * s + 1, s - 2, s - 2);
     }
     noise(ctx, S, S, 3000, rnd, 1, 0.12);
+    cache.set('groundCanvas-paving', c);
     return toTex(c);
   });
 }
@@ -150,6 +177,7 @@ export function concreteTexture() {
     ctx.strokeStyle = 'rgba(80,80,80,0.25)';
     ctx.lineWidth = 2;
     for (let i = 0; i <= S; i += S / 2) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, S); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(S, i); ctx.stroke(); }
+    cache.set('groundCanvas-concrete', c);
     return toTex(c);
   });
 }
@@ -271,11 +299,25 @@ const FACADES = {
   clinic: { wall: '#f6f7f8', frame: '#d0d6dc', glass: '#7fa6c6', style: 'band' },
 };
 
-function drawFacade(ctx, S, f, lit, rnd) {
+function drawFacade(ctx, S, f, lit, rnd, mask = false) {
   const bay = S / 4;
+  if (mask) {
+    // mask mode: walls grey, frames white (proud), glass black (recessed) – feeds height + material maps
+    ctx.fillStyle = '#bdbdbd';
+    ctx.fillRect(0, 0, S, S);
+    if (f.style === 'brick') {
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      for (let y = 0; y < S; y += 6) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(S, y); ctx.stroke();
+        for (let x = (y / 6) % 2 ? 0 : 7; x < S; x += 14) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 6); ctx.stroke(); }
+      }
+    }
+    if (f.style === 'industrial') { ctx.fillStyle = 'rgba(0,0,0,0.18)'; for (let x = 0; x < S; x += 8) ctx.fillRect(x, 0, 3, S); }
+  }
   ctx.fillStyle = lit ? '#000' : f.wall;
+  if (mask) ctx.fillStyle = 'rgba(0,0,0,0)';
   ctx.fillRect(0, 0, S, S);
-  if (!lit) {
+  if (!lit && !mask) {
     noise(ctx, S, S, 2500, rnd, 1, 0.06);
     if (f.style === 'brick') {
       ctx.strokeStyle = 'rgba(60,25,15,0.25)';
@@ -297,6 +339,7 @@ function drawFacade(ctx, S, f, lit, rnd) {
       const warm = rnd() < 0.8;
       const litCol = warm ? `rgb(255,${200 + Math.floor(rnd() * 40)},${120 + Math.floor(rnd() * 50)})` : 'rgb(190,215,255)';
       const glass = (x, y, w, h) => {
+        if (mask) { ctx.fillStyle = '#000'; ctx.fillRect(x, y, w, h); return; }
         if (lit) { ctx.fillStyle = on ? litCol : '#000'; ctx.fillRect(x, y, w, h); return; }
         const g = ctx.createLinearGradient(x, y, x + w, y + h);
         g.addColorStop(0, shade(f.glass, 28)); g.addColorStop(1, shade(f.glass, -18));
@@ -374,10 +417,66 @@ export function facadeTextures(name) {
     const f = FACADES[name];
     const S = 256;
     const seed = name.length * 977 + name.charCodeAt(0);
-    const c1 = canvas(S), c2 = canvas(S);
+    const c1 = canvas(S), c2 = canvas(S), c3 = canvas(S);
     drawFacade(c1.getContext('2d'), S, f, false, mulberry32(seed));
     drawFacade(c2.getContext('2d'), S, f, true, mulberry32(seed));
-    return { map: toTex(c1), emissive: toTex(c2) };
+    // height mask: frames proud (light grey), walls mid, glass recessed (black)
+    drawFacade(c3.getContext('2d'), S, { ...f, wall: '#c0c0c0', frame: '#ffffff', glass: '#000000' }, false, mulberry32(seed), true);
+    const normal = normalFromCanvas(c3, 2.2);
+    // material map: G = roughness, B = metalness (glass is smooth and reflective)
+    const m3 = c3.getContext('2d').getImageData(0, 0, S, S);
+    const c4 = canvas(S), ctx4 = c4.getContext('2d');
+    const o4 = ctx4.createImageData(S, S);
+    const glassy = f.style === 'curtain';
+    for (let i = 0; i < S * S; i++) {
+      const v = m3.data[i * 4] / 255; // 0 glass .. 1 wall/frame
+      const isGlass = v < 0.2;
+      o4.data[i * 4] = 255;
+      o4.data[i * 4 + 1] = isGlass ? (glassy ? 18 : 28) : 200 + Math.random() * 40;
+      o4.data[i * 4 + 2] = isGlass ? (glassy ? 170 : 120) : 0;
+      o4.data[i * 4 + 3] = 255;
+    }
+    ctx4.putImageData(o4, 0, 0);
+    return { map: toTex(c1), emissive: toTex(c2), normal, orm: toTex(c4, { srgb: false }) };
+  });
+}
+
+export function roofNormal(kind) {
+  return memo(`roofN-${kind}`, () => {
+    roofTexture(kind);
+    const c = cache.get(`roofCanvas-${kind}`);
+    return c ? normalFromCanvas(c, kind === 'gravel' ? 3 : 2.5) : null;
+  });
+}
+
+export function groundNormal(kind) {
+  return memo(`groundN-${kind}`, () => {
+    const c = cache.get(`groundCanvas-${kind}`);
+    return c ? normalFromCanvas(c, kind === 'grass' ? 2.2 : 1.6) : null;
+  });
+}
+
+// Tileable wave normal map for water surfaces.
+export function waterNormal() {
+  return memo('waterN', () => {
+    const S = 256, c = canvas(S), ctx = c.getContext('2d');
+    const img = ctx.createImageData(S, S);
+    const waves = [];
+    const rnd = mulberry32(4242);
+    for (let i = 0; i < 14; i++) {
+      const kx = Math.round((rnd() - 0.5) * 8), ky = Math.round((rnd() - 0.5) * 8) || 1;
+      waves.push([kx, ky, rnd() * 6.28, 0.5 + rnd()]);
+    }
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      let h = 0;
+      for (const [kx, ky, ph, a] of waves) h += Math.sin(((kx * x + ky * y) / S) * Math.PI * 2 + ph) * a / Math.hypot(kx, ky);
+      const v = 128 + h * 22;
+      const o = (y * S + x) * 4;
+      img.data[o] = img.data[o + 1] = img.data[o + 2] = Math.max(0, Math.min(255, v));
+      img.data[o + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    return normalFromCanvas(c, 3.5);
   });
 }
 
@@ -414,6 +513,7 @@ export function roofTexture(kind) {
       ctx.fillRect(0, 0, S, S);
       for (let x = 0; x < S; x += 16) { ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(x, 0, 8, S); }
     }
+    cache.set(`roofCanvas-${kind}`, c);
     return toTex(c);
   });
 }

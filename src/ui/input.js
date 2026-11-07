@@ -36,18 +36,22 @@ export class Input {
     const mode = this.app.mode;
     if (n === 1) {
       const cell = this.world.pickCell(e.clientX, e.clientY);
-      if (e.button === 2) { this.gesture = { kind: 'rotate' }; return; }
+      if (e.button === 2) { this.gesture = { kind: 'rotate' }; this.world.stopGlide(); return; }
       if (mode?.kind === 'place' && cell && this.app.ghostContains(cell)) {
+        this.world.stopGlide();
         this.gesture = { kind: 'ghost', off: [cell[0] - mode.x, cell[1] - mode.z] };
         return;
       }
       if (mode?.kind === 'road' && cell) {
+        this.world.stopGlide();
         this.gesture = { kind: 'road', start: cell, end: cell };
         this.app.roadPreview(cell, cell);
         return;
       }
       this.gesture = { kind: 'pan' };
+      this.world.setDragging(true);
     } else if (n === 2) {
+      this.world.setDragging(true);
       if (this.gesture?.kind === 'road') this.app.roadPreview(null);
       const [a, b] = [...this.ptr.values()];
       this.gesture = {
@@ -72,7 +76,7 @@ export class Input {
     const g = this.gesture;
     if (!g) return;
     if (g.kind === 'pan') this.world.panBy(dx, dy);
-    else if (g.kind === 'rotate') { this.world.cam.yaw -= dx * 0.006; }
+    else if (g.kind === 'rotate') { this.world.cam.yaw -= dx * 0.006; this.world.cam.tilt += dy * 0.004; }
     else if (g.kind === 'ghost') {
       const cell = this.world.pickCell(e.clientX, e.clientY);
       if (cell) this.app.moveGhost(cell[0] - g.off[0], cell[1] - g.off[1]);
@@ -86,7 +90,9 @@ export class Input {
       this.world.cam.dist = g.dist0 * (g.d0 / Math.max(10, d));
       this.world.cam.yaw = g.yaw0 + (ang - g.a0);
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      this.world.panBy(mx - g.mx, my - g.my);
+      // two fingers moving up/down together tilt the camera; sideways they pan
+      this.world.cam.tilt += (my - g.my) * 0.0035;
+      this.world.panBy(mx - g.mx, 0);
       g.mx = mx; g.my = my;
     }
   }
@@ -99,6 +105,8 @@ export class Input {
     const moved = Math.hypot(e.clientX - p.sx, e.clientY - p.sy);
     const quick = performance.now() - p.t < 450;
     if (this.ptr.size === 0) {
+      this.world.setDragging(false);
+      if (g?.kind !== 'pan' || moved < 9) this.world.stopGlide();
       if (g?.kind === 'road' && !cancel) this.app.finishRoad(g.start, g.end);
       else if (!cancel && moved < 9 && quick && g?.kind !== 'pinch' && p.button !== 2) this.app.tap(e.clientX, e.clientY);
       this.gesture = null;

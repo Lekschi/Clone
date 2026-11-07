@@ -5,10 +5,17 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { BUILDINGS } from '../data/buildings.js';
 import { makeModel } from './models.js';
 import { nightMaterials, M } from './kit.js';
-import { roadTexture, setAnisotropy, gridTexture } from './textures.js';
+import { roadTexture, setAnisotropy, gridTexture, normalFromCanvas } from './textures.js';
 import { Terrain, Forest } from './terrain.js';
 import { Traffic } from './traffic.js';
 import { Particles, Clouds } from './fx.js';
+import { Post } from './post.js';
+import { SkySystem } from './sky.js';
+import { Weather } from './weather.js';
+import { Birds, Boats, Aircraft } from './life.js';
+import { TIME, WIND } from './shared.js';
+import { Builder, forEachMaterial } from './kit.js';
+import { SEA_LEVEL } from './terrain.js';
 
 const HIGHWAY_Z = 30;
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -19,12 +26,13 @@ export class World {
     this.game = game;
     this.settings = settings;
     this.container = container;
-    const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    // MSAA is replaced by SMAA in the post chain (AO needs a clean depth buffer)
+    const r = new THREE.WebGLRenderer({ antialias: settings.quality === 'low', powerPreference: 'high-performance', stencil: false });
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.toneMapping = THREE.NeutralToneMapping;
-    r.toneMappingExposure = 0.92;
+    r.toneMappingExposure = 1.0;
     r.shadowMap.enabled = true;
-    r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.shadowMap.type = THREE.PCFShadowMap;
     container.appendChild(r.domElement);
     this.renderer = r;
     setAnisotropy(Math.min(8, r.capabilities.getMaxAnisotropy()));
@@ -35,8 +43,13 @@ export class World {
     scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environmentIntensity = 0.45;
 
-    this.camera = new THREE.PerspectiveCamera(32, 1, 0.5, 900);
-    this.cam = { target: new THREE.Vector3(26, 0, 30), dist: 26, yaw: -0.62, pitch: 0.92 };
+    this.camera = new THREE.PerspectiveCamera(32, 1, 0.5, 1200);
+    this.cam = { target: new THREE.Vector3(26, 0, 30), dist: 26, yaw: -0.62, pitch: 0.92, tilt: 0 };
+    // the rendered view eases towards `cam` (the goal set by input) for smooth, weighty motion
+    this.view = { target: new THREE.Vector3(30, 0, 34), dist: 75, yaw: -1.1, tilt: 0 };
+    this.panAcc = new THREE.Vector2();
+    this.panVel = new THREE.Vector2();
+    this.dragging = false;
 
     this.hemi = new THREE.HemisphereLight('#d6e9ff', '#6f7d58', 0.9);
     scene.add(this.hemi);
@@ -44,13 +57,17 @@ export class World {
     this.sun.castShadow = true;
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.025;
+    this.sun.shadow.radius = 2.5;
     scene.add(this.sun);
     scene.add(this.sun.target);
+    this.post = new Post(r, scene, this.camera);
     this.applyQuality();
 
     this.fog = new THREE.Fog('#bfd8ec', 60, 260);
     scene.fog = this.fog;
-    scene.background = new THREE.Color('#bfd8ec');
+    this.skySys = new SkySystem(r, scene);
+    this.weather = new Weather(scene);
+    this.weather.enabled = settings.weather !== false;
 
     // landscape
     this.terrain = new Terrain(game.W, game.H, game.state.seed, HIGHWAY_Z);
@@ -84,9 +101,11 @@ export class World {
     this.anims = [];
     this.traffic = new Traffic(scene, game, HIGHWAY_Z);
     this.walkers = new Traffic(scene, game, HIGHWAY_Z, { walkers: true });
-    this.walkers.mesh.castShadow = false;
     this.particles = new Particles(scene);
     this.clouds = new Clouds(scene, game.W / 2, game.H / 2);
+    this.birds = new Birds(scene, game.W / 2, game.H / 2);
+    this.boats = new Boats(scene, game.W, game.H, SEA_LEVEL);
+    this.aircraft = new Aircraft(scene, game.W / 2, game.H / 2);
 
     this.time = settings.daytime === 'real' ? this.realTime() : 0.42;
     this.night = 0;
@@ -101,10 +120,10 @@ export class World {
     for (const b of game.state.buildings) this.syncBuilding(b, false);
     this.updateEmitters();
 
-    game.on('built', (b) => { this.syncBuilding(b, true); this.updateEmitters(); this.refreshOverlay(); });
+    game.on('built', (b) => { this.syncBuilding(b, 'build'); this.updateEmitters(); this.refreshOverlay(); });
     game.on('moved', (b) => { this.syncBuilding(b, true); this.updateEmitters(); this.refreshOverlay(); });
     game.on('removed', (b) => { this.removeBuilding(b); this.updateEmitters(); this.refreshOverlay(); });
-    game.on('upgraded', (b) => { this.syncBuilding(b, true); this.updateEmitters(); });
+    game.on('upgraded', (b) => { this.syncBuilding(b, 'build'); this.updateEmitters(); });
     game.on('roads', () => { this.rebuildRoads(); this.refacingAll(); });
     game.on('expanded', () => { this.rebuildLocks(); this.treeSpots = this.treeSpots.filter((s) => !s.cell || !game.isUnlocked(s.cell[0], s.cell[1])); this.forest.set(this.treeSpots); });
     game.on('city', () => this.refreshOverlay());
@@ -115,10 +134,13 @@ export class World {
   }
 
   applyQuality() {
-    const high = this.settings.quality !== 'low';
+    const q = this.settings.quality || 'high';
+    const high = q !== 'low';
     const dpr = window.devicePixelRatio || 1;
-    this.renderer.setPixelRatio(Math.min(dpr, high ? 2 : 1.25));
-    const size = high ? 4096 : 2048;
+    this.renderer.setPixelRatio(Math.min(dpr, q === 'ultra' ? 2 : high ? 1.6 : 1.25));
+    const size = q === 'ultra' ? 4096 : high ? 3072 : 2048;
+    this.post.setQuality(q);
+    if (this.weather) this.weather.enabled = this.settings.weather !== false;
     if (this.sun.shadow.mapSize.x !== size) {
       this.sun.shadow.mapSize.set(size, size);
       if (this.sun.shadow.map) { this.sun.shadow.map.dispose(); this.sun.shadow.map = null; }
@@ -134,25 +156,52 @@ export class World {
   resize() {
     const w = this.container.clientWidth, h = this.container.clientHeight;
     this.renderer.setSize(w, h);
+    this.post.setSize(w, h);
     this.camera.aspect = w / Math.max(1, h);
     this.camera.updateProjectionMatrix();
   }
 
   // ------------------------------------------------------------------ camera
-  updateCamera() {
+  updateCamera(dt = 0.016) {
     const c = this.cam;
-    c.dist = Math.max(5, Math.min(80, c.dist));
-    c.pitch = 0.62 + smooth(5, 50, c.dist) * 0.42;
+    // inertia: keep gliding after a flick
+    if (this.dragging) {
+      if (dt > 0) this.panVel.lerp(this.panAcc.clone().divideScalar(dt), 0.5);
+    } else if (this.panVel.lengthSq() > 1e-4) {
+      c.target.x += this.panVel.x * dt;
+      c.target.z += this.panVel.y * dt;
+      this.panVel.multiplyScalar(Math.exp(-dt * 4.5));
+    }
+    this.panAcc.set(0, 0);
+    c.dist = Math.max(4.5, Math.min(80, c.dist));
+    c.tilt = Math.max(-0.5, Math.min(0.25, c.tilt || 0));
+    c.pitch = Math.max(0.14, 0.62 + smooth(5, 50, c.dist) * 0.42 + c.tilt);
     c.target.x = Math.max(-6, Math.min(this.game.W + 6, c.target.x));
     c.target.z = Math.max(-6, Math.min(this.game.H + 8, c.target.z));
-    const cp = Math.cos(c.pitch);
+    const v = this.view;
+    const k = 1 - Math.exp(-dt * 11);
+    v.target.lerp(c.target, k);
+    v.dist += (c.dist - v.dist) * (1 - Math.exp(-dt * 8));
+    let dy = c.yaw - v.yaw;
+    dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    v.yaw += dy * (1 - Math.exp(-dt * 9));
+    v.tilt += (c.tilt - v.tilt) * (1 - Math.exp(-dt * 8));
+    const pitch = Math.max(0.14, 0.62 + smooth(5, 50, v.dist) * 0.42 + v.tilt);
+    const cp = Math.cos(pitch);
     this.camera.position.set(
-      c.target.x + Math.sin(c.yaw) * cp * c.dist,
-      c.target.y + Math.sin(c.pitch) * c.dist,
-      c.target.z + Math.cos(c.yaw) * cp * c.dist,
+      v.target.x + Math.sin(v.yaw) * cp * v.dist,
+      v.target.y + Math.sin(pitch) * v.dist,
+      v.target.z + Math.cos(v.yaw) * cp * v.dist,
     );
-    this.camera.lookAt(c.target);
+    this.camera.lookAt(v.target);
   }
+
+  setDragging(on) {
+    this.dragging = on;
+    if (on) this.panVel.set(0, 0);
+  }
+
+  stopGlide() { this.panVel.set(0, 0); }
 
   // Move the camera target by a screen-space delta (pixels).
   panBy(dx, dy) {
@@ -160,8 +209,12 @@ export class World {
     const scale = (c.dist * Math.tan((this.camera.fov * Math.PI) / 360) * 2) / this.container.clientHeight;
     const s = Math.sin(c.yaw), co = Math.cos(c.yaw);
     // right vector (co, -s), forward on ground (-s, -co)
-    c.target.x -= (dx * co + dy * s / Math.sin(c.pitch)) * scale;
-    c.target.z -= (-dx * s + dy * co / Math.sin(c.pitch)) * scale;
+    const mx = -(dx * co + dy * s / Math.sin(c.pitch)) * scale;
+    const mz = -(-dx * s + dy * co / Math.sin(c.pitch)) * scale;
+    c.target.x += mx;
+    c.target.z += mz;
+    this.panAcc.x += mx;
+    this.panAcc.y += mz;
   }
 
   focus(x, z, dist) {
@@ -191,7 +244,7 @@ export class World {
     const m4 = new THREE.Matrix4();
     for (const [mask, cells] of groups) {
       const tex = roadTexture(!!(mask & 1), !!(mask & 2), !!(mask & 4), !!(mask & 8));
-      const mat = this.roadMats?.[mask] || new THREE.MeshStandardMaterial({ map: tex, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -2 });
+      const mat = this.roadMats?.[mask] || new THREE.MeshStandardMaterial({ map: tex, normalMap: normalFromCanvas(tex.image, 1.4), normalScale: new THREE.Vector2(0.6, 0.6), roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2 });
       this.roadMats = this.roadMats || {};
       this.roadMats[mask] = mat;
       const im = new THREE.InstancedMesh(geo, mat, cells.length);
@@ -218,6 +271,19 @@ export class World {
       this.lampHeadGeo.translate(0.075, 0.248, 0);
       this.lampMat = new THREE.MeshStandardMaterial({ color: '#4a5058', metalness: 0.5, roughness: 0.5 });
       this.lampHeadMat = M.glow('#ffe2a0');
+      // pool of warm light on the pavement under each lamp (additive, only at night)
+      const pc = document.createElement('canvas');
+      pc.width = pc.height = 64;
+      const pctx = pc.getContext('2d');
+      const pg = pctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      pg.addColorStop(0, 'rgba(255,214,150,0.9)'); pg.addColorStop(0.45, 'rgba(255,200,130,0.35)'); pg.addColorStop(1, 'rgba(255,190,120,0)');
+      pctx.fillStyle = pg; pctx.fillRect(0, 0, 64, 64);
+      const pt = new THREE.CanvasTexture(pc);
+      pt.colorSpace = THREE.SRGBColorSpace;
+      this.poolGeo = new THREE.PlaneGeometry(0.62, 0.62);
+      this.poolGeo.rotateX(-Math.PI / 2);
+      this.poolGeo.translate(0.09, 0.022, 0);
+      this.poolMat = new THREE.MeshBasicMaterial({ map: pt, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, polygonOffset: true, polygonOffsetFactor: -4 });
     }
     const spots = [];
     for (const [mask, cells] of groups) {
@@ -234,7 +300,7 @@ export class World {
     this.lamps = [];
     if (!spots.length) return;
     const q = new THREE.Quaternion(), m4 = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
-    for (const [geo, mat, shadow] of [[this.lampGeo, this.lampMat, true], [this.lampHeadGeo, this.lampHeadMat, false]]) {
+    for (const [geo, mat, shadow] of [[this.lampGeo, this.lampMat, true], [this.lampHeadGeo, this.lampHeadMat, false], [this.poolGeo, this.poolMat, false]]) {
       const im = new THREE.InstancedMesh(geo, mat, spots.length);
       spots.forEach(([x, z, r], i) => { q.setFromAxisAngle(up, r); m4.compose(new THREE.Vector3(x, 0.012, z), q, one); im.setMatrixAt(i, m4); });
       im.castShadow = shadow;
@@ -326,7 +392,8 @@ export class World {
       old.obj.position.set(b.x + w / 2, 0, b.z + d / 2);
       old.obj.rotation.y = ang;
       old.obj.updateMatrixWorld(true);
-      if (anim) this.pop(old.obj, b, w, d);
+      if (anim === 'build') this.construct(old.obj, b, w, d);
+      else if (anim) this.pop(old.obj, b, w, d);
       return;
     }
     if (old) this.buildRoot.remove(old.obj);
@@ -342,13 +409,121 @@ export class World {
     }
     this.buildRoot.add(obj);
     this.objs.set(b.id, { obj, level, type: b.type });
-    if (anim) this.pop(obj, b, w, d);
+    if (anim === 'build') this.construct(obj, b, w, d);
+    else if (anim) this.pop(obj, b, w, d);
   }
 
   pop(obj, b, w, d) {
+    this.finishAnim(obj);
     obj.scale.set(1, 0.02, 1);
-    this.anims.push({ obj, t: 0, dur: 0.75 });
+    this.anims.push({ kind: 'pop', obj, t: 0, dur: 0.75 });
     this.particles.dust(b.x + w / 2, b.z + d / 2, w, d);
+  }
+
+  finishAnim(obj) {
+    for (const a of this.anims) if (a.obj === obj) a.t = a.dur;
+  }
+
+  // Construction site: scaffolding goes up, the building rises floor by floor while a tower
+  // crane swings overhead, then the scaffolding comes down.
+  construct(obj, b, w, d) {
+    this.finishAnim(obj);
+    const h = Math.max(0.3, obj.userData.height || 0.6);
+    const bl = new Builder();
+    const pole = M.color('#aeb5bb', { metal: 0.6, rough: 0.4 });
+    const plank = M.color('#b98c52');
+    const net = M.color('#3d8f6c', { opacity: 0.42 });
+    const W = Math.max(0.6, w - 0.2), D = Math.max(0.6, d - 0.2);
+    const top = Math.min(h + 0.06, 6.2);
+    const nx = Math.max(2, Math.round(W / 0.33)), nz = Math.max(2, Math.round(D / 0.33));
+    for (let i = 0; i <= nx; i++) for (const z of [-D / 2, D / 2]) bl.box(0.012, top, 0.012, pole, -W / 2 + (i * W) / nx, 0, z);
+    for (let i = 1; i < nz; i++) for (const x of [-W / 2, W / 2]) bl.box(0.012, top, 0.012, pole, x, 0, -D / 2 + (i * D) / nz);
+    for (let y = 0.25; y < top; y += 0.25) {
+      for (const z of [-D / 2, D / 2]) { bl.box(W, 0.008, 0.012, pole, 0, y, z); bl.box(W, 0.006, 0.06, plank, 0, y - 0.006, z + Math.sign(z) * 0.035); }
+      for (const x of [-W / 2, W / 2]) { bl.box(0.012, 0.008, D, pole, x, y, 0); bl.box(0.06, 0.006, D, plank, x + Math.sign(x) * 0.035, y - 0.006, 0); }
+    }
+    bl.box(W, top, 0.004, net, 0, 0, -D / 2 - 0.07);
+    bl.box(0.004, top, D, net, W / 2 + 0.07, 0, 0);
+    const scaffold = bl.build();
+    scaffold.position.copy(obj.position);
+    scaffold.rotation.y = obj.rotation.y;
+    scaffold.scale.y = 0.01;
+    this.scene.add(scaffold);
+    // tower crane
+    let crane = null, jib = null;
+    if (h > 0.45 || w * d >= 4) {
+      crane = new THREE.Group();
+      const yellow = M.color('#f2b632', { metal: 0.3, rough: 0.5 });
+      const dark = M.color('#3a3f45', { metal: 0.4 });
+      const mh = Math.min(h + 0.7, 7);
+      const cb = new Builder();
+      cb.box(0.05, mh, 0.05, yellow, 0, 0, 0);
+      for (let y = 0.1; y < mh; y += 0.12) cb.box(0.056, 0.008, 0.056, dark, 0, y, 0);
+      cb.box(0.2, 0.04, 0.2, M.color('#9aa1a8'), 0, 0, 0);
+      const mast = cb.build();
+      crane.add(mast);
+      jib = new THREE.Group();
+      jib.position.y = mh;
+      const L = Math.max(w, d) * 1.1 + 0.5;
+      const jb = new Builder();
+      jb.box(L, 0.035, 0.035, yellow, L / 2 - 0.05, 0, 0);
+      jb.box(0.45, 0.03, 0.03, yellow, -0.25, 0, 0);
+      jb.box(0.12, 0.08, 0.08, M.color('#8a9097'), -0.42, -0.06, 0);
+      jb.box(0.07, 0.06, 0.06, M.color('#e9ecef'), 0.05, -0.06, 0.05);
+      jb.box(0.03, 0.18, 0.03, yellow, 0, 0.02, 0);
+      jb.box(0.004, mh * 0.6, 0.004, dark, L * 0.7, -mh * 0.6, 0);
+      jb.box(0.03, 0.03, 0.03, M.color('#d93030'), L * 0.7, -mh * 0.6 - 0.03, 0);
+      jib.add(jb.build());
+      crane.add(jib);
+      const cx = W / 2 + 0.12, cz = -D / 2 - 0.12;
+      const a = obj.rotation.y;
+      crane.position.set(obj.position.x + cx * Math.cos(a) + cz * Math.sin(a), 0, obj.position.z - cx * Math.sin(a) + cz * Math.cos(a));
+      crane.scale.y = 0.01;
+      this.scene.add(crane);
+    }
+    obj.scale.set(1, 0.01, 1);
+    const dur = 2.6 + Math.min(4, h * 0.45);
+    this.anims.push({ kind: 'build', obj, scaffold, crane, jib, t: 0, dur, floors: Math.max(1, Math.round(h / 0.25)), b, w, d, dustT: 0 });
+    this.particles.dust(b.x + w / 2, b.z + d / 2, w, d);
+  }
+
+  stepAnims(dt) {
+    for (let i = this.anims.length - 1; i >= 0; i--) {
+      const a = this.anims[i];
+      a.t += dt;
+      const k = Math.min(1, a.t / a.dur);
+      if (a.kind === 'pop') {
+        a.obj.scale.y = Math.max(0.02, easeOutBack(k));
+        if (k >= 1) { a.obj.scale.y = 1; this.anims.splice(i, 1); }
+        continue;
+      }
+      // construction timeline: 0–12 % scaffold up, 12–88 % building rises, 88–100 % scaffold down
+      const up = smooth(0, 0.12, k), down = smooth(0.88, 1, k);
+      const sc = Math.max(0.01, up * (1 - down));
+      a.scaffold.scale.y = sc;
+      if (a.crane) {
+        a.crane.scale.y = Math.max(0.01, smooth(0, 0.1, k) * (1 - smooth(0.92, 1, k)));
+        a.jib.rotation.y = Math.sin(a.t * 0.9) * 1.1 + a.t * 0.25;
+      }
+      const p = Math.max(0, Math.min(1, (k - 0.12) / 0.76));
+      const f = p * a.floors;
+      const grown = (Math.floor(f) + smooth(0.15, 0.85, f - Math.floor(f))) / a.floors;
+      a.obj.scale.y = Math.max(0.01, Math.min(1, grown));
+      a.dustT -= dt;
+      if (a.dustT <= 0 && k < 0.9) {
+        a.dustT = 0.35;
+        const pp = new THREE.Vector3(a.obj.position.x + (Math.random() - 0.5) * a.w * 0.8, 0.05 + grown * (a.obj.userData.height || 0.5), a.obj.position.z + (Math.random() - 0.5) * a.d * 0.8);
+        this.particles.spawn(pp, { color: '#d6ccb8', life: 1.6, size: 0.18, grow: 1, rise: 0.15, drift: 0.1, opacity: 0.45 });
+      }
+      if (k >= 1) {
+        a.obj.scale.y = 1;
+        this.scene.remove(a.scaffold);
+        if (a.crane) this.scene.remove(a.crane);
+        for (const o of [a.scaffold, a.crane]) o?.traverse((m) => { if (m.isMesh) m.geometry.dispose(); });
+        this.particles.dust(a.b.x + a.w / 2, a.b.z + a.d / 2, a.w, a.d);
+        this.anims.splice(i, 1);
+      }
+    }
   }
 
   refacingAll() {
@@ -378,6 +553,9 @@ export class World {
         for (const [dx, dz] of [[-0.25, 0], [0.25, -0.1], [0, 0.2]]) {
           list.push({ pos: new THREE.Vector3(o.obj.position.x + dx, top * 0.7, o.obj.position.z + dz), rate: 7, fire: true, active: () => !!b.fire });
         }
+      }
+      if (o && o.obj.userData.fountain?.length) {
+        for (const p of o.obj.userData.fountain) list.push({ pos: p.clone().applyMatrix4(o.obj.matrixWorld), rate: 26, fountain: true });
       }
       if (!o || !o.obj.userData.smoke?.length) continue;
       const def = BUILDINGS[b.type];
@@ -567,7 +745,7 @@ export class World {
   // ------------------------------------------------------------------ frame
   updateLighting(dt) {
     const mode = this.settings.daytime || 'cycle';
-    if (mode === 'day') this.time = 0.45;
+    if (mode === 'day') this.time = 0.42;
     else if (mode === 'real') this.time = this.realTime();
     else {
       const speed = this.night > 0.5 ? 2.2 : 1;
@@ -575,66 +753,92 @@ export class World {
     }
     const t = this.time;
     const e = -Math.cos(t * Math.PI * 2); // -1 midnight .. 1 noon
-    const day = smooth(-0.15, 0.3, e);
-    const dusk = smooth(-0.2, 0.05, e) * (1 - smooth(0.05, 0.4, e));
+    const day = smooth(-0.12, 0.3, e);
+    const dusk = smooth(-0.22, 0.02, e) * (1 - smooth(0.02, 0.38, e));
     this.night = 1 - day;
-    const az = t * Math.PI * 2 + 0.6;
-    const elev = 0.5 + Math.abs(e) * 0.32;
+    const cover = this.weather.cover;
+    const wet = this.weather.wet;
     const C = this._lc || (this._lc = {
-      dir: new THREE.Vector3(), sunDay: new THREE.Color('#fff3df'), sunDusk: new THREE.Color('#ffae6b'), moon: new THREE.Color('#9fb6ff'),
-      hemiN: new THREE.Color('#1d2b4d'), hemiD: new THREE.Color('#d6e9ff'), gN: new THREE.Color('#1a1f1a'), gD: new THREE.Color('#6f7d58'),
-      fogDay: new THREE.Color('#bfd8ec'), fogDusk: new THREE.Color('#e8b48e'), fogNight: new THREE.Color('#0d1528'), tmp: new THREE.Color(),
+      dir: new THREE.Vector3(), skySun: new THREE.Vector3(),
+      sunDay: new THREE.Color('#fff1dc'), sunDusk: new THREE.Color('#ff9a52'), moon: new THREE.Color('#9fb6ff'),
+      hemiN: new THREE.Color('#1b2846'), hemiD: new THREE.Color('#cfe3ff'), gN: new THREE.Color('#2a2418'), gD: new THREE.Color('#6f7d58'),
+      fogDay: new THREE.Color('#c9d9e6'), fogDusk: new THREE.Color('#e7a77a'), fogNight: new THREE.Color('#0a1120'), fogRain: new THREE.Color('#8f9aa4'),
+      cloudDay: new THREE.Color('#ffffff'), cloudRain: new THREE.Color('#8d949c'), cloudNight: new THREE.Color('#2a3140'), cloudDusk: new THREE.Color('#ffc9a3'), tmp: new THREE.Color(),
     });
-    const dir = C.dir.set(Math.cos(az) * Math.cos(elev), Math.sin(elev), Math.sin(az) * Math.cos(elev));
+    // true sun position for the sky (it sets and rises below the horizon)
+    const az = t * Math.PI * 2 + 0.6;
+    const se = e * 1.12;
+    C.skySun.set(Math.cos(az) * Math.cos(se), Math.sin(se), Math.sin(az) * Math.cos(se));
+    // the shadow-casting light: sun by day (never too flat), moon by night
+    const le = day >= 0.5 ? Math.max(0.42, se) : 0.75;
+    const dir = C.dir.set(Math.cos(az) * Math.cos(le), Math.sin(le), Math.sin(az) * Math.cos(le));
     if (day < 0.5) dir.set(-dir.x, dir.y, -dir.z);
-    const c = this.cam;
-    const tgt = c.target;
-    this.sun.position.copy(tgt).addScaledVector(dir, 70);
+    const tgt = this.view.target;
+    const dist = this.view.dist;
+    this.sun.position.copy(tgt).addScaledVector(dir, 80);
     this.sun.target.position.copy(tgt);
-    const half = Math.max(12, Math.min(70, c.dist * 0.95));
+    const half = Math.max(10, Math.min(70, dist * 0.9));
     const sc = this.sun.shadow.camera;
-    if (sc.right !== half) { sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.near = 1; sc.far = 160; sc.updateProjectionMatrix(); }
-    this.sun.color.copy(C.moon).lerp(C.sunDusk, smooth(0, 0.5, day)).lerp(C.sunDay, smooth(0.5, 1, day) * (1 - dusk * 0.8));
-    this.sun.intensity = 0.45 + day * 2.3;
-    this.hemi.intensity = 0.28 + day * 0.7;
+    if (Math.abs(sc.right - half) > 0.5) { sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.near = 1; sc.far = 180; sc.updateProjectionMatrix(); }
+    this.sun.color.copy(C.moon).lerp(C.sunDusk, smooth(0, 0.5, day)).lerp(C.sunDay, smooth(0.5, 1, day) * (1 - dusk * 0.85));
+    this.sun.intensity = (0.35 + day * 2.6) * (1 - cover * 0.8);
+    this.sun.shadow.radius = 2 + cover * 6;
+    this.hemi.intensity = (0.25 + day * 0.75) * (1 - cover * 0.1);
     this.hemi.color.copy(C.hemiN).lerp(C.hemiD, day);
     this.hemi.groundColor.copy(C.gN).lerp(C.gD, day);
     this.fog.color.copy(C.fogNight).lerp(C.fogDusk, smooth(0, 0.6, day)).lerp(C.fogDay, smooth(0.55, 1, day) * (1 - dusk));
-    this.scene.background.copy(this.fog.color);
-    this.fog.near = c.dist * 1.8 + 20;
-    this.fog.far = c.dist * 4 + 160;
-    this.scene.environmentIntensity = 0.12 + day * 0.38;
-    this.renderer.toneMappingExposure = 0.9 + (1 - day) * 0.25;
-    const lit = smooth(0.35, 0.85, this.night);
+    this.fog.color.lerp(C.tmp.copy(C.fogRain).multiplyScalar(0.25 + day * 0.75), cover * 0.75);
+    this.fog.near = dist * 1.6 + 18 - cover * 10;
+    this.fog.far = dist * 4 + 170 - cover * 60;
+    this.scene.environmentIntensity = (0.3 + day * 0.75) * (1 - cover * 0.3);
+    this.renderer.toneMappingExposure = (1.0 + (1 - day) * 0.3) * (1 - cover * 0.18);
+    this.clouds.castShadows(day > 0.5);
+    this.skySys.update(this.camera, C.skySun, this.night, cover);
+    // lights of the city
+    const lit = smooth(0.32, 0.8, this.night) + cover * 0.25 * day;
     for (const m of nightMaterials) {
-      if (m.userData.sign) m.emissiveIntensity = 0.15 + lit * 0.9;
-      else if (m.userData.glow) m.emissiveIntensity = 0.25 + lit * 2.2;
-      else m.emissiveIntensity = lit * 1.15;
+      if (m.userData.sign) m.emissiveIntensity = 0.15 + lit * 1.3;
+      else if (m.userData.glow) m.emissiveIntensity = 0.25 + lit * 3.5;
+      else m.emissiveIntensity = Math.min(1, lit) * 1.7;
     }
+    if (this.poolMat) this.poolMat.opacity = smooth(0.4, 0.85, this.night) * 0.75;
+    // wet streets after rain
+    if (Math.abs((this._wet ?? -1) - wet) > 0.01) {
+      this._wet = wet;
+      const apply = (m) => {
+        if (m.userData.dryRough == null) m.userData.dryRough = m.roughness;
+        m.roughness = m.userData.dryRough * (1 - wet * 0.68);
+        m.envMapIntensity = 1 + wet * 1.4;
+        m.color.setScalar(1 - wet * 0.3);
+      };
+      for (const m of Object.values(this.roadMats || {})) apply(m);
+      forEachMaterial((m) => { if (m.userData.ground && m.userData.ground !== 'grass' && m.userData.ground !== 'sand') apply(m); });
+    }
+    // clouds: visible from afar, heavier and greyer in bad weather
+    C.tmp.copy(C.cloudNight).lerp(C.cloudDusk, smooth(0, 0.6, day)).lerp(C.cloudDay, smooth(0.55, 1, day) * (1 - dusk * 0.7));
+    C.tmp.lerp(C.cloudRain, cover * 0.8 * day);
+    this.clouds.setLook(Math.min(1, smooth(24, 58, dist) + cover * 0.3), C.tmp);
+    WIND.value = 1 + cover * 1.4;
   }
 
   update(dt) {
-    this.updateCamera();
+    TIME.value += dt;
+    this.updateCamera(dt);
+    this.weather.update(dt, this.view.target);
     this.updateLighting(dt);
-    // spawn animations
-    for (let i = this.anims.length - 1; i >= 0; i--) {
-      const a = this.anims[i];
-      a.t += dt;
-      const k = Math.min(1, a.t / a.dur);
-      a.obj.scale.y = Math.max(0.02, easeOutBack(k));
-      if (k >= 1) { a.obj.scale.y = 1; this.anims.splice(i, 1); }
-    }
-    for (const { obj } of this.objs.values()) for (const r of obj.userData.rotors) r.rotation.z += dt * r.userData.spin.speed;
+    this.stepAnims(dt);
+    for (const { obj } of this.objs.values()) for (const r of obj.userData.rotors) r.rotation.z += dt * r.userData.spin.speed * WIND.value;
     if (this.selRing) this.selRing.material.opacity = 0.35 + Math.sin(performance.now() / 200) * 0.2;
-    this.traffic.update(dt);
-    if (this.cam.dist < 40) this.walkers.update(dt);
-    this.walkers.mesh.visible = this.cam.dist < 40;
-    this.particles.update(dt, this.night > 0.6);
-    this.clouds.update(dt);
-    this.clouds.setOpacity(smooth(30, 60, this.cam.dist));
-    const wm = this.terrain.water.material.map;
-    if (wm) { wm.offset.x += dt * 0.004; wm.offset.y += dt * 0.002; }
-    this.renderer.render(this.scene, this.camera);
+    this.traffic.update(dt, this.night, this.weather.wet);
+    const near = this.view.dist < 40;
+    if (near) this.walkers.update(dt);
+    for (const m of this.walkers.meshes) m.visible = near && this.weather.wet < 0.7;
+    this.particles.update(dt, this.night > 0.6, WIND.value);
+    this.clouds.update(dt, WIND.value);
+    this.birds.update(dt, this.night + this.weather.wet);
+    this.boats.update(dt, TIME.value);
+    this.aircraft.update(dt, TIME.value, this.night);
+    this.post.render(dt, this.night, this.weather.cover);
   }
 }
 

@@ -2,10 +2,15 @@
 // so every building becomes a handful of draw calls.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { facadeTextures, roofTexture, signTexture, grassTexture, pavingTexture, asphaltTexture, concreteTexture, sandTexture, plainAsphalt } from './textures.js';
+import { facadeTextures, roofTexture, signTexture, grassTexture, pavingTexture, asphaltTexture, concreteTexture, sandTexture, plainAsphalt, roofNormal, groundNormal } from './textures.js';
+import { waterMaterial, addWind } from './shared.js';
 
 const matCache = new Map();
 export const nightMaterials = new Set();
+
+export function forEachMaterial(fn) {
+  for (const m of matCache.values()) fn(m);
+}
 
 function cached(key, make) {
   let m = matCache.get(key);
@@ -26,19 +31,31 @@ export const M = {
   facade(name, tint = '#ffffff') {
     return cached(`f${name}-${tint}`, () => {
       const t = facadeTextures(name);
-      const m = new THREE.MeshStandardMaterial({ color: tint, map: t.map, roughness: 0.78, metalness: 0.02, emissive: 0xffffff, emissiveMap: t.emissive, emissiveIntensity: 0 });
-      if (name === 'glass' || name === 'glassdark') { m.roughness = 0.25; m.metalness = 0.35; }
+      const m = new THREE.MeshStandardMaterial({
+        color: tint, map: t.map, emissive: 0xffffff, emissiveMap: t.emissive, emissiveIntensity: 0,
+        normalMap: t.normal, normalScale: new THREE.Vector2(0.9, 0.9),
+        roughnessMap: t.orm, metalnessMap: t.orm, roughness: 1, metalness: 1, envMapIntensity: 1.1,
+      });
       nightMaterials.add(m);
       return m;
     });
   },
   roof(kind, tint = '#ffffff') {
-    return cached(`r${kind}-${tint}`, () => new THREE.MeshStandardMaterial({ color: tint, map: roofTexture(kind), roughness: kind === 'solar' ? 0.3 : 0.9, metalness: kind === 'solar' ? 0.4 : 0 }));
+    return cached(`r${kind}-${tint}`, () => {
+      const m = new THREE.MeshStandardMaterial({ color: tint, map: roofTexture(kind), roughness: kind === 'solar' ? 0.22 : kind === 'metal' ? 0.45 : 0.88, metalness: kind === 'solar' ? 0.5 : kind === 'metal' ? 0.35 : 0 });
+      const n = roofNormal(kind);
+      if (n && kind !== 'solar') { m.normalMap = n; m.normalScale = new THREE.Vector2(0.8, 0.8); }
+      return m;
+    });
   },
   ground(kind, tint = '#ffffff') {
     return cached(`g${kind}-${tint}`, () => {
       const map = { grass: grassTexture, paving: pavingTexture, asphalt: asphaltTexture, concrete: concreteTexture, sand: sandTexture, plain: plainAsphalt }[kind]();
-      return new THREE.MeshStandardMaterial({ color: tint, map, roughness: 0.95 });
+      const m = new THREE.MeshStandardMaterial({ color: tint, map, roughness: kind === 'asphalt' || kind === 'plain' ? 0.82 : 0.95 });
+      const n = groundNormal(kind);
+      if (n) { m.normalMap = n; m.normalScale = new THREE.Vector2(0.7, 0.7); }
+      m.userData.ground = kind;
+      return m;
     });
   },
   sign(text, bg, fg) {
@@ -58,8 +75,8 @@ export const M = {
       return m;
     });
   },
-  water() {
-    return cached('water', () => new THREE.MeshStandardMaterial({ color: '#3c8cc0', roughness: 0.08, metalness: 0.2 }));
+  water(kind = 'pool') {
+    return waterMaterial(kind);
   },
   glass() {
     return cached('glassclear', () => {
@@ -95,6 +112,7 @@ export class Builder {
     this.loose = [];
     this.rotors = [];
     this.smoke = [];
+    this.fountain = [];
     this.water = [];
   }
 
@@ -242,6 +260,7 @@ export class Builder {
     for (const o of this.loose) group.add(o);
     group.userData.rotors = this.rotors;
     group.userData.smoke = this.smoke;
+    group.userData.fountain = this.fountain;
     return group;
   }
 }
@@ -261,7 +280,7 @@ export function lot(b, w, d, kind = 'grass', tint = '#ffffff') {
 export function tree(b, x, z, s = 1, kind = 0, seed = 0) {
   const trunk = M.color('#6b4a32', { flat: true });
   const greens = ['#2f6b2a', '#3b7d2f', '#4a8a34', '#2a5f2b', '#57953c'];
-  const leaf = M.color(greens[Math.abs(Math.round(seed + kind)) % greens.length], { flat: true, rough: 0.9 });
+  const leaf = addWind(M.color(greens[Math.abs(Math.round(seed + kind)) % greens.length], { flat: true, rough: 0.9 }), 1);
   if (kind === 1) {
     b.cyl(0.025 * s, 0.03 * s, 0.12 * s, trunk, x, 0.02, z, 5);
     b.cone(0.16 * s, 0.32 * s, leaf, x, 0.1 * s, z, 7);
@@ -271,8 +290,10 @@ export function tree(b, x, z, s = 1, kind = 0, seed = 0) {
     b.sphere(0.1 * s, leaf, x, 0.3 * s, z, 1, 2.2, 1, 0);
   } else {
     b.cyl(0.025 * s, 0.032 * s, 0.16 * s, trunk, x, 0.02, z, 5);
-    b.sphere(0.16 * s, leaf, x, 0.27 * s, z, 1, 0.9, 1, 1);
-    b.sphere(0.1 * s, leaf, x + 0.08 * s, 0.34 * s, z - 0.03 * s, 1, 1, 1, 0);
+    b.sphere(0.15 * s, leaf, x, 0.26 * s, z, 1, 0.9, 1, 1);
+    b.sphere(0.11 * s, leaf, x + 0.08 * s, 0.33 * s, z - 0.04 * s, 1, 1, 1, 1);
+    b.sphere(0.1 * s, leaf, x - 0.07 * s, 0.31 * s, z + 0.05 * s, 1, 1, 1, 1);
+    b.sphere(0.08 * s, leaf, x + 0.01 * s, 0.4 * s, z + 0.01 * s, 1, 1, 1, 0);
   }
 }
 

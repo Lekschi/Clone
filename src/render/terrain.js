@@ -2,7 +2,8 @@
 // a coastline to the south, a forest, and the motorway that links the city to the region.
 import * as THREE from 'three';
 import { mulberry32 } from '../game/emitter.js';
-import { grassTexture, sandTexture, roadTexture, waterTexture } from './textures.js';
+import { grassTexture, sandTexture, roadTexture, waterTexture, groundNormal } from './textures.js';
+import { waterMaterial, addWind } from './shared.js';
 
 export const SEA_LEVEL = -0.14;
 
@@ -66,7 +67,7 @@ export class Terrain {
     const cRock = new THREE.Color('#8f8a82');
     const cSnow = new THREE.Color('#f4f6fa');
     const cSand = new THREE.Color('#f3e2b0');
-    const cDark = new THREE.Color('#9fb98a');
+    const cDark = new THREE.Color('#8fa57c');
     const col = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i) + cx, z = pos.getZ(i) + cz;
@@ -86,7 +87,8 @@ export class Terrain {
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ map: grassTexture(), vertexColors: true, roughness: 0.95 });
+    const mat = new THREE.MeshStandardMaterial({ map: grassTexture(), vertexColors: true, roughness: 0.95, normalMap: groundNormal('grass'), normalScale: new THREE.Vector2(0.9, 0.9) });
+    this.landMat = mat;
     const land = new THREE.Mesh(geo, mat);
     land.receiveShadow = true;
     land.name = 'land';
@@ -98,19 +100,16 @@ export class Terrain {
     void sandMat;
 
     // sea
-    const wt = waterTexture();
-    const waterTex = wt.clone();
-    waterTex.needsUpdate = true;
-    waterTex.repeat.set(40, 40);
-    const water = new THREE.Mesh(
-      new THREE.PlaneGeometry(900, 500),
-      new THREE.MeshStandardMaterial({ color: '#2f86b8', map: waterTex, roughness: 0.12, metalness: 0.35, transparent: true, opacity: 0.93 }),
-    );
+    const seaGeo = new THREE.PlaneGeometry(900, 500, 1, 1);
+    const suv = seaGeo.attributes.uv;
+    for (let i = 0; i < suv.count; i++) suv.setXY(i, suv.getX(i) * 90, suv.getY(i) * 50);
+    const water = new THREE.Mesh(seaGeo, waterMaterial('sea'));
     water.rotation.x = -Math.PI / 2;
     water.position.set(cx, SEA_LEVEL, this.H + 250);
     water.receiveShadow = true;
     g.add(water);
     this.water = water;
+    void waterTexture;
 
     // motorway to the west
     const t = roadTexture(false, true, false, true).clone();
@@ -172,13 +171,16 @@ export class Forest {
     const pine2 = new THREE.ConeGeometry(0.15, 0.4, 6);
     pine2.translate(0, 0.62, 0);
     const pineGeo = mergeSimple([pine, pine2]);
-    const roundGeo = new THREE.DodecahedronGeometry(0.22, 0);
-    roundGeo.scale(1, 0.95, 1);
-    roundGeo.translate(0, 0.38, 0);
+    const blobs = [[0, 0.36, 0, 0.2], [0.11, 0.42, -0.05, 0.14], [-0.1, 0.41, 0.06, 0.14], [0.02, 0.52, 0.02, 0.12]].map(([x, y, z, r]) => {
+      const gg = new THREE.DodecahedronGeometry(r, 0);
+      gg.translate(x, y, z);
+      return gg;
+    });
+    const roundGeo = mergeSimple(blobs);
     this.geos = { trunk: trunkGeo, pine: pineGeo, round: roundGeo };
     this.mats = {
       trunk: new THREE.MeshStandardMaterial({ color: '#6b4a32', roughness: 0.9, flatShading: true }),
-      leaf: new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95, flatShading: true, envMapIntensity: 0.35 }),
+      leaf: addWind(new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.95, flatShading: true, envMapIntensity: 0.35 }), 1.2),
     };
     this.meshes = [];
   }
