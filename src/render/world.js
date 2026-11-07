@@ -18,6 +18,7 @@ import { sfx } from '../audio.js';
 import { Builder, forEachMaterial } from './kit.js';
 import { SEA_LEVEL } from './terrain.js';
 import { StreetFurniture } from './street.js';
+import { Agents } from './agents.js';
 
 const HIGHWAY_Z = 30;
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -105,6 +106,7 @@ export class World {
     this.traffic = new Traffic(scene, game, HIGHWAY_Z);
     this.traffic.street = this.street;
     this.walkers = new Traffic(scene, game, HIGHWAY_Z, { walkers: true });
+    this.agents = new Agents(scene, game, this);
     this.particles = new Particles(scene);
     this.clouds = new Clouds(scene, game.W / 2, game.H / 2);
     this.birds = new Birds(scene, game.W / 2, game.H / 2);
@@ -132,6 +134,13 @@ export class World {
     game.on('expanded', () => { this.rebuildLocks(); this.treeSpots = this.treeSpots.filter((s) => !s.cell || !game.isUnlocked(s.cell[0], s.cell[1])); this.forest.set(this.treeSpots); });
     game.on('city', () => this.refreshOverlay());
     game.on('fire', () => this.updateEmitters());
+    // delivery trucks carry finished goods from factories and shops to the warehouse
+    game.on('collected', (b) => {
+      const cat = BUILDINGS[b.type].cat;
+      if (cat !== 'industry' && cat !== 'commerce') return;
+      const store = game.state.buildings.find((x) => x.type === 'storage');
+      if (store) this.agents.dispatch('truck', b, store, { color: cat === 'industry' ? '#f2b632' : '#3f7fd8' });
+    });
     game.on('fireOut', (b) => { this.updateEmitters(); const [w, d] = game.size(b); this.particles.dust(b.x + w / 2, b.z + d / 2, w, d); });
 
     this.resize();
@@ -818,6 +827,7 @@ export class World {
     if (this.selRing) this.selRing.material.opacity = 0.35 + Math.sin(performance.now() / 200) * 0.2;
     this.street.update(dt, this.night);
     this.traffic.update(dt, this.night, this.weather.wet);
+    this.agents.update(dt, this.night);
     const near = this.view.dist < 40;
     if (near) this.walkers.update(dt);
     for (const m of this.walkers.meshes) m.visible = near && this.weather.wet < 0.7;

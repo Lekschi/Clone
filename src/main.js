@@ -115,7 +115,12 @@ class App {
     game.on('sold', (s) => this.hud.toast(`${s.qty}× ${ITEMS[s.item].name} verkauft`, 'good'));
     game.on('wish', () => sfx.notify());
     game.on('served', (b, c) => this.hud.toast(`${c.who} kauft ${c.qty}× ${ITEMS[c.item].name}`, 'good'));
-    game.on('fire', () => this.hud.toast('Feuer in einem Wohngebiet! Feuerwachen schützen vor Bränden.', 'bad'));
+    game.on('fire', (b, covered) => {
+      if (this.demo) return;
+      if (covered) this.hud.toast('Feueralarm! Die Feuerwehr ist ausgerückt.', 'info');
+      else this.hud.toast('Feuer in einem Wohngebiet! Feuerwachen schützen vor Bränden.', 'bad');
+    });
+    game.on('fireOut', (b, brigade) => { if (brigade && !this.demo) this.hud.toast('Die Feuerwehr hat den Brand gelöscht.', 'good'); });
 
     window.addEventListener('resize', () => this.world.resize());
     let last = performance.now();

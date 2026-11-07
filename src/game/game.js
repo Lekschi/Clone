@@ -1013,17 +1013,31 @@ export class Game extends Emitter {
       if (!isRes(b.type)) continue;
       const inf = this.info.get(b.id);
       if (!inf) continue;
-      if (b.fire && inf.services?.fire) { b.fire = null; changed = true; this.emit('fireOut', b); continue; }
-      if (!b.fire && b.level >= 2 && !inf.services?.fire && Math.random() < 0.012) {
+      // protected houses: the fire brigade drives out; if it cannot get there the fire dies down
+      if (b.fire && inf.services?.fire && Date.now() - b.fire > 50000) { b.fire = null; changed = true; this.emit('fireOut', b); continue; }
+      const risk = inf.services?.fire ? 0.003 : 0.012;
+      if (!b.fire && b.level >= 2 && Math.random() < risk) {
         b.fire = Date.now();
         changed = true;
-        this.emit('fire', b);
+        this.emit('fire', b, !!inf.services?.fire);
       }
     }
     if (changed) { this.recompute(); this.emit('change'); }
   }
 
   extinguishCost(b) { return 40 + 30 * b.level; }
+
+  // put out by the city's own fire brigade (engine arrived on the scene)
+  extinguishFree(bid) {
+    const b = this.byId.get(bid);
+    if (!b || !b.fire) return false;
+    b.fire = null;
+    this.state.stats.firesOut = (this.state.stats.firesOut || 0) + 1;
+    this.recompute();
+    this.emit('fireOut', b, true);
+    this.emit('change');
+    return true;
+  }
 
   extinguish(bid) {
     const b = this.byId.get(bid);

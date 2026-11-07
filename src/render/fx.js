@@ -79,6 +79,20 @@ export class Particles {
     }
   }
 
+  // water jet from a fire engine's monitor to a burning building (ballistic droplets)
+  spray(x, z, tx, tz, dt) {
+    this.sprayAcc = (this.sprayAcc || 0) + dt * 34;
+    const T = 0.55;
+    while (this.sprayAcc > 1) {
+      this.sprayAcc -= 1;
+      const p = new THREE.Vector3(x, 0.17, z);
+      this.spawn(p, { color: '#e3f2ff', life: T * 1.25, size: 0.045, grow: 0.5, rise: 0, vy: 0.75 + Math.random() * 0.12, gravity: 1.6, opacity: 0.8, tex: this.drop });
+      const u = this.live[this.live.length - 1]?.userData;
+      if (u) { u.vx = (tx - x) / T * (0.92 + Math.random() * 0.12); u.vz = (tz - z) / T * (0.92 + Math.random() * 0.12); }
+      if (Math.random() < 0.25) this.spawn(new THREE.Vector3(tx, 0.25, tz), { color: '#f2f5f7', life: 1.6, size: 0.18, grow: 0.9, rise: 0.4, drift: 0.05, opacity: 0.45, spread: 0.08 });
+    }
+  }
+
   setEmitters(list) { this.emitters = list; }
 
   update(dt, night, wind = 1) {

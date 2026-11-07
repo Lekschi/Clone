@@ -5,6 +5,7 @@ import { HOUSE_POP, HOUSE_NAMES, xpForNext, maxHouseLevelFor, skipPrice } from '
 import { questProgress } from '../game/quests.js';
 import { WISH_HAPPY } from '../game/game.js';
 import { isRes } from '../data/buildings.js';
+import { residentVoice, cityVoices, voiceHTML } from '../game/voices.js';
 import { syncCode, useSyncCode, saveSettings, clearLocal } from '../save/save.js';
 import { setSound, setMusic, setAmbience, sfx, TRACKS, MUSIC_LICENSES, nowPlaying, skipTrack } from '../audio.js';
 import { inClaude, downloadsApi } from '../save/claude.js';
@@ -150,8 +151,9 @@ export class Panels {
           <div class="stat">${icon(inf.happy >= 65 ? 'smile' : inf.happy >= 40 ? 'meh' : 'sad')}<b>${inf.happy}%</b><span>Zufriedenheit</span></div>
           <div class="stat">${icon('tree')}<b>+${inf.boostPct || 0}%</b><span>Bonus</span></div>
         </div>
+        ${voiceHTML(residentVoice(g, b, inf, this.voiceOpts()))}
         ${!inf.road ? '<div class="note bad">Keine Straße! Ohne Anbindung zieht niemand ein.</div>' : ''}
-        ${b.fire ? `<div class="box fire-box">${icon('fire', 'xl')}<div><b>Es brennt!</b><p class="muted small">Die Bewohner sind geflohen. Eine Feuerwache in der Nähe löscht automatisch – oder du rufst die freiwillige Feuerwehr.</p></div><button class="btn danger" data-act="extinguish">Löschen ${coins(g.extinguishCost(b))}</button></div>` : ''}
+        ${b.fire ? `<div class="box fire-box">${icon('fire', 'xl')}<div><b>Es brennt!</b><p class="muted small">${inf.services?.fire ? 'Die Feuerwehr ist mit Blaulicht unterwegs und löscht den Brand kostenlos.' : 'Die Bewohner sind geflohen. Kein Feuerwehrhaus in der Nähe – baue eins oder rufe die freiwillige Feuerwehr.'}</p></div><button class="btn danger" data-act="extinguish">Löschen ${coins(g.extinguishCost(b))}</button></div>` : ''}
         <div class="kv"><span>Versorgung</span><div class="pills">${utilRow}</div></div>
         <div class="kv"><span>Dienste</span><div class="pills">${svcRow}</div></div>
         <div class="kv"><span>Umwelt</span><div class="pills">${inf.polluted ? '<span class="pill bad">Luftverschmutzung</span>' : '<span class="pill good">Saubere Luft</span>'}</div></div>
@@ -332,6 +334,7 @@ export class Panels {
     if (pol > 30) tips.push('Viele Häuser leiden unter Abgasen. Halte Fabriken und Kraftwerke von Wohngebieten fern.');
     if (S.level >= 3 && cov('fire') < 70) tips.push('Nicht alle Häuser sind vor Feuer geschützt.');
     if (g.storageFree() < 5) tips.push('Dein Lager ist fast voll. Verkaufe Waren oder baue Häuser damit aus.');
+    const voices = cityVoices(g, 3, this.voiceOpts());
     return `<div class="stats">
         <div class="stat">${icon('people')}<b>${num(g.city.pop)}</b><span>Einwohner</span></div>
         <div class="stat">${icon(g.city.happy >= 65 ? 'smile' : g.city.happy >= 40 ? 'meh' : 'sad')}<b>${g.city.happy}%</b><span>Zufriedenheit</span></div>
@@ -346,7 +349,13 @@ export class Panels {
         <span class="pill ${cov('health') >= 90 ? 'good' : 'bad'}">${icon('health')}Gesundheit ${cov('health')}%</span>
         <span class="pill ${pol <= 10 ? 'good' : 'bad'}">Smog ${pol}%</span>
       </div>
-      ${tips.length ? `<div class="tips">${tips.map((t) => `<div class="note">${t}</div>`).join('')}</div>` : '<div class="note good">Alles im grünen Bereich. Weiter so, Bürgermeister!</div>'}`;
+      ${tips.length ? `<div class="tips">${tips.map((t) => `<div class="note">${t}</div>`).join('')}</div>` : '<div class="note good">Alles im grünen Bereich. Weiter so, Bürgermeister!</div>'}
+      ${voices.length ? `<h3>Stimmen der Stadt <span class="muted">Tippe, um hinzufliegen</span></h3><div class="voices">${voices.map((v) => voiceHTML(v, ` data-act="visit" data-arg="${v.bid}"`)).join('')}</div>` : ''}`;
+  }
+
+  voiceOpts() {
+    const w = this.app.world;
+    return { night: (w?.night || 0) > 0.6, rain: (w?.weather?.wet || 0) > 0.4 };
   }
 
   r_overview() {
@@ -569,6 +578,15 @@ export class Panels {
       case 'close': this.close(); return;
       case 'tab': c.tab = Number(arg); c.form = null; c.picking = false; c.sel = null; if (c.kind === 'market' && c.tab === 2) app.gm.refresh(); break;
       case 'move': this.close(); app.startMove(Number(arg)); return;
+      case 'visit': {
+        const vb = g.byId.get(Number(arg));
+        if (!vb) return;
+        const [w, d] = g.size(vb);
+        this.close();
+        app.world.focus(vb.x + w / 2, vb.z + d / 2, 14);
+        setTimeout(() => this.open('house', vb.id), 450);
+        return;
+      }
       case 'demolish': {
         if (c.confirmDemolish) { g.demolish(Number(arg)); sfx.remove(); this.close(); return; }
         c.confirmDemolish = true;

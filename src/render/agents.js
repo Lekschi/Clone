@@ -7,6 +7,10 @@ import { siren } from '../audio.js';
 
 const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 const LANE = 0.15;
+// shared head/tail lamp materials, brightened at night
+const HEAD = new THREE.MeshBasicMaterial({ color: '#fff6dc', toneMapped: false });
+const TAIL = new THREE.MeshBasicMaterial({ color: '#ff2a1a', toneMapped: false });
+const LAMP = new THREE.BoxGeometry(0.006, 0.012, 0.018);
 
 function box(w, h, d, color, x, y, z, opts = {}) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), opts.mat || new THREE.MeshStandardMaterial({ color, roughness: opts.rough ?? 0.4, metalness: opts.metal ?? 0.3 }));
@@ -45,6 +49,13 @@ function makeVehicle(kind) {
     g.add(box(0.2, 0.012, 0.096, '#1f4ea8', 0, 0.04, 0));
     g.add(box(0.11, 0.04, 0.084, '#2a3846', -0.01, 0.065, 0, { rough: 0.15, metal: 0.5 }));
     wheels(g, [0.06, -0.06], 0.045, 0.021);
+  }
+  const front = kind === 'truck' ? 0.144 : kind === 'fire' ? 0.136 : 0.1;
+  const back = kind === 'truck' ? -0.136 : kind === 'fire' ? -0.136 : -0.1;
+  const zs = kind === 'police' ? 0.034 : 0.04;
+  for (const s of [-1, 1]) {
+    const h = new THREE.Mesh(LAMP, HEAD); h.position.set(front, 0.045, s * zs); g.add(h);
+    const t = new THREE.Mesh(LAMP, TAIL); t.position.set(back, 0.05, s * zs); g.add(t);
   }
   if (kind !== 'truck') {
     // light bar: two lamps that flash alternately
@@ -116,13 +127,52 @@ export class Agents {
     const obj = makeVehicle(kind);
     if (opts.color) obj.getObjectByName('cargo')?.material.color.set(opts.color);
     this.scene.add(obj);
-    const v = { id: ++this.uid, kind, path, i: 0, t: 0, v: 0, max: kind === 'truck' ? 0.9 : 1.6, obj, onArrive: opts.onArrive, back: opts.back };
+    const v = { id: ++this.uid, kind, path, i: 0, t: 0, v: 0, max: kind === 'truck' ? 0.9 : 1.6, obj, onArrive: opts.onArrive, back: opts.back, stay: opts.stay || 0, target: opts.target, aim: opts.aim };
     this.list.push(v);
     return v;
   }
 
-  update(dt) {
+  // a fire engine is already on its way to this building
+  responding(bid) { return this.list.some((v) => v.kind === 'fire' && v.target === bid && !v.returning); }
+
+  // nearest fire station whose service area covers the building
+  station(b, kind) {
     const g = this.game;
+    const [w, d] = g.size(b);
+    const cx = b.x + w / 2, cz = b.z + d / 2;
+    let best = null, bd = Infinity;
+    for (const s of g.state.buildings) {
+      const sv = BUILDINGS[s.type].service;
+      if (sv?.kind !== kind || s.built > Date.now()) continue;
+      const [sw, sd] = g.size(s);
+      const dist = Math.hypot(s.x + sw / 2 - cx, s.z + sd / 2 - cz);
+      if (dist <= sv.r + 1 && dist < bd) { bd = dist; best = s; }
+    }
+    return best;
+  }
+
+  // send engines to burning houses inside a station's area
+  checkFires() {
+    const g = this.game;
+    for (const b of g.state.buildings) {
+      if (!b.fire || this.responding(b.id)) continue;
+      const st = this.station(b, 'fire');
+      if (!st) continue;
+      const v = this.dispatch('fire', st, b, {
+        target: b.id, stay: 5, back: {}, aim: [b.x + g.size(b)[0] / 2, b.z + g.size(b)[1] / 2],
+        onArrive: () => g.extinguishFree?.(b.id),
+      });
+      if (!v && Date.now() - b.fire > 4000) g.extinguishFree?.(b.id);
+    }
+  }
+
+  update(dt, night = 0) {
+    const g = this.game;
+    const lamp = 0.15 + night * 2.6;
+    HEAD.color.setRGB(lamp, lamp * 0.95, lamp * 0.8);
+    TAIL.color.setRGB(0.35 + night * 2.2, 0.04, 0.02);
+    this.fireCheck = (this.fireCheck || 0) - dt;
+    if (this.fireCheck <= 0) { this.fireCheck = 1.5; this.checkFires(); }
     // occasional police patrol between two random road cells
     this.nextPatrol -= dt;
     if (this.nextPatrol <= 0) {
@@ -137,12 +187,21 @@ export class Agents {
     }
     const tgt = this.world.view.target;
     for (const v of this.list) {
-      const urgent = v.kind === 'fire' && !v.returning;
-      v.v += (v.max - v.v) * Math.min(1, dt * 1.5);
+      const urgent = v.kind === 'fire' && !v.returning && !v.arrived;
+      const p = v.path;
+      // slow down for the last cell so vehicles pull up instead of vanishing
+      const left = p.length - 1 - v.i + 0.5 - v.t;
+      const want = v.arrived ? 0 : Math.min(v.max, 0.25 + left * 0.9);
+      v.v += (want - v.v) * Math.min(1, dt * 2.5);
       v.t += dt * v.v;
-      while (v.t >= 1 && v.i < v.path.length - 1) { v.t -= 1; v.i++; }
-      const p = v.path, i = v.i;
-      if (i >= p.length - 1 && v.t >= 0.5) { v.done = true; continue; }
+      while (v.t >= 1 && v.i < p.length - 1) { v.t -= 1; v.i++; }
+      const i = v.i;
+      if (i >= p.length - 1 && v.t >= 0.5) {
+        v.t = 0.5;
+        v.arrived = true;
+        v.stay -= dt;
+        if (v.stay <= 0) { v.done = true; v.onArrive?.(v); continue; }
+      }
       const cur = p[i], prev = p[Math.max(0, i - 1)], next = p[Math.min(p.length - 1, i + 1)];
       const din = i === 0 ? [next[0] - cur[0], next[1] - cur[1]] : [cur[0] - prev[0], cur[1] - prev[1]];
       const dout = i >= p.length - 1 ? din : [next[0] - cur[0], next[1] - cur[1]];
@@ -159,19 +218,24 @@ export class Agents {
       v.obj.position.set(px, 0.012, pz);
       v.obj.rotation.y = Math.atan2(-tz, tx);
       if (v.obj.userData.flash) {
+        // blue lights only on an emergency run (and while working at the scene)
+        const lit = v.kind === 'fire' && !v.returning;
         const on = Math.floor(performance.now() / 160) % 2;
-        v.obj.userData.flash[0].visible = on === 0;
-        v.obj.userData.flash[1].visible = on === 1;
+        v.obj.userData.flash[0].visible = lit && on === 0;
+        v.obj.userData.flash[1].visible = lit && on === 1;
       }
       if (v.kind === 'fire') {
         const d = Math.hypot(px - tgt.x, pz - tgt.z) + this.world.view.dist * 0.5;
         siren(`fire${v.id}`, urgent, Math.max(0, 0.07 - d * 0.0025));
       }
+      if (v.arrived && v.kind === 'fire' && v.stay > 0) {
+        // water jet on the burning house while parked
+        if (v.aim) this.world.particles?.spray?.(px, pz, v.aim[0], v.aim[1], dt);
+      }
     }
     for (const v of this.list.filter((x) => x.done)) {
       this.scene.remove(v.obj);
       if (v.kind === 'fire') siren(`fire${v.id}`, false);
-      if (v.onArrive) v.onArrive(v);
       if (v.back) this.spawn(v.kind, [...v.path].reverse(), { color: v.back.color }).returning = true;
     }
     this.list = this.list.filter((x) => !x.done);
