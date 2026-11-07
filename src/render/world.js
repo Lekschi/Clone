@@ -14,6 +14,7 @@ import { SkySystem } from './sky.js';
 import { Weather } from './weather.js';
 import { Birds, Boats, Aircraft } from './life.js';
 import { TIME, WIND } from './shared.js';
+import { sfx } from '../audio.js';
 import { Builder, forEachMaterial } from './kit.js';
 import { SEA_LEVEL } from './terrain.js';
 
@@ -519,6 +520,17 @@ export class World {
       const f = p * a.floors;
       const grown = (Math.floor(f) + smooth(0.15, 0.85, f - Math.floor(f))) / a.floors;
       a.obj.scale.y = Math.max(0.01, Math.min(1, grown));
+      // hammering on the site, louder when the camera is close
+      a.hamT = (a.hamT || 0) - dt;
+      if (a.hamT <= 0 && k > 0.1 && k < 0.88) {
+        a.hamT = 0.25 + Math.random() * 0.5;
+        const d = Math.hypot(a.obj.position.x - this.view.target.x, a.obj.position.z - this.view.target.z) + this.view.dist * 0.4;
+        const vol = Math.max(0, 0.35 - d * 0.012);
+        if (vol > 0.02) {
+          const pan = Math.max(-0.8, Math.min(0.8, this.toScreen(a.obj.position).x / this.container.clientWidth * 2 - 1));
+          if (Math.random() < 0.85) sfx.hammer(vol, pan); else sfx.clink(vol * 0.8, pan);
+        }
+      }
       a.dustT -= dt;
       if (a.dustT <= 0 && k < 0.9) {
         a.dustT = 0.35;

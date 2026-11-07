@@ -14,7 +14,7 @@ import { h, num, icon, esc } from './ui/dom.js';
 import { SaveManager, loadSettings, account } from './save/save.js';
 import { GlobalMarket } from './save/net.js';
 import { inClaude, claudeBackend, saveDoc } from './save/claude.js';
-import { setSound, setMusic, sfx } from './audio.js';
+import { setSound, setMusic, setAmbience, setMusicMood, updateAmbience, sfx } from './audio.js';
 
 const OPEN_PANEL = { house: 'house', storage: 'storage', cityhall: 'cityhall', market: 'market', cargo: 'cargo' };
 
@@ -24,6 +24,7 @@ class App {
     this.settings = loadSettings();
     setSound(this.settings.sound);
     setMusic(this.settings.music !== false);
+    setAmbience(this.settings.ambience !== false);
     this.mode = null;
   }
 
@@ -113,10 +114,23 @@ class App {
       this.world.update(dt);
       this.bubbles.update(dt);
       this.advisor.update(dt);
+      this.updateSound(dt);
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
     if ('serviceWorker' in navigator && location.protocol === 'https:' && !inClaude()) navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+
+  // Ambience follows what the camera sees; music switches to the night playlist after dusk.
+  updateSound(dt) {
+    const w = this.world, g = this.game;
+    const tz = w.view.target.z;
+    const coast = Math.max(0, Math.min(1, 1 - (g.H + 6 - tz) / 22)) * (1 - Math.min(1, w.view.dist / 90));
+    const parks = g.state.buildings.filter((b) => BUILDINGS[b.type].cat === 'leisure').length;
+    const green = Math.min(1, 0.35 + parks * 0.04 + (w.view.dist > 40 ? 0.2 : 0));
+    updateAmbience(dt, { night: w.night, rain: w.weather.wet, wind: w.weather.cover, coast, city: Math.min(1, g.city.pop / 4000 + g.state.roads.length / 600), zoom: w.view.dist, green });
+    if (w.night > 0.72 && this.mood !== 'night') { this.mood = 'night'; setMusicMood('night'); }
+    else if (w.night < 0.35 && this.mood !== 'day') { this.mood = 'day'; setMusicMood('day'); }
   }
 
   foundPart(id) {

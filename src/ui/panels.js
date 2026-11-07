@@ -6,7 +6,7 @@ import { questProgress } from '../game/quests.js';
 import { WISH_HAPPY } from '../game/game.js';
 import { isRes } from '../data/buildings.js';
 import { syncCode, useSyncCode, saveSettings, clearLocal } from '../save/save.js';
-import { setSound, setMusic, sfx, TRACKS } from '../audio.js';
+import { setSound, setMusic, setAmbience, sfx, TRACKS, MUSIC_LICENSES, nowPlaying, skipTrack } from '../audio.js';
 import { inClaude, downloadsApi } from '../save/claude.js';
 
 const CAT_COLOR = { res: '#ff8a5b', util: '#f2b024', service: '#4d8de6', industry: '#8c9aab', commerce: '#ff6a5c', leisure: '#53b04c', fixed: '#7b6cd9' };
@@ -514,7 +514,8 @@ export class Panels {
       title: 'Einstellungen', icon: icon('gear'), color: '#5a6b7d',
       body: `<div class="kv"><span>Stadtname</span><input class="inp" id="cityName" value="${esc(g.state.name)}" maxlength="28"></div>
         <div class="kv"><span>Soundeffekte</span><div class="segs">${opt('sound', true, 'An')}${opt('sound', false, 'Aus')}</div></div>
-        <div class="kv"><span>Musik</span><div class="segs">${opt('music', true, 'An')}${opt('music', false, 'Aus')}</div></div>
+        <div class="kv"><span>Musik</span><div class="segs">${opt('music', true, 'An')}${opt('music', false, 'Aus')}</div>${nowPlaying() ? `<span class="muted small">♪ ${esc(nowPlaying().title)} – ${esc(nowPlaying().artist)}</span><button class="btn ghost small" data-act="skipTrack">Nächstes Stück</button>` : ''}</div>
+        <div class="kv"><span>Umgebung</span><div class="segs">${opt('ambience', true, 'An')}${opt('ambience', false, 'Aus')}</div><span class="muted small">Vögel, Verkehr, Meer, Regen</span></div>
         <div class="kv"><span>Grafik</span><div class="segs">${opt('quality', 'ultra', 'Ultra')}${opt('quality', 'high', 'Hoch')}${opt('quality', 'low', 'Schnell')}</div></div>
         <div class="kv"><span>Wetter</span><div class="segs">${opt('weather', true, 'Wechselnd')}${opt('weather', false, 'Immer klar')}</div></div>
         <div class="kv"><span>Schatten</span><div class="segs">${opt('shadows', true, 'An')}${opt('shadows', false, 'Aus')}</div></div>
@@ -533,9 +534,8 @@ export class Panels {
           <button class="btn ghost small danger" data-act="reset">${c.confirmReset ? 'Wirklich alles löschen?' : 'Neues Spiel'}</button>
         </div></div>
         <details class="box credits"><summary><b>Musik & Sounds – Mitwirkende</b></summary>
-          <p class="small">Musik von filmmusic.io (Standard-Lizenz, frei mit Nennung):</p>
-          <ul class="small">${TRACKS.map((t) => `<li>„${t.title}“ von ${t.artist} – <a href="${t.url}" target="_blank" rel="noopener">filmmusic.io</a></li>`).join('')}</ul>
-          <p class="small">Lizenz: <a href="https://filmmusic.io/standard-license" target="_blank" rel="noopener">filmmusic.io/standard-license</a></p>
+          <p class="small">Musik:</p>
+          <ul class="small">${TRACKS.map((t) => `<li>„${t.title}“ – ${t.artist} (<a href="${t.url}" target="_blank" rel="noopener">${t.url.replace(/^https:\/\/(www\.)?/, '').split('/')[0]}</a>), Lizenz: <a href="${MUSIC_LICENSES[t.license]}" target="_blank" rel="noopener">${t.license}</a></li>`).join('')}</ul>
           <p class="small">Soundeffekte: Kenney (kenney.nl) und UI SFX (uisfx.com), beide CC0 / gemeinfrei.</p>
         </details>
         <p class="muted small center">Neustadt · ein Städtebauspiel ohne Echtgeld-Käufe</p>`,
@@ -637,6 +637,7 @@ export class Panels {
         saveSettings(app.settings);
         if (k === 'sound') setSound(app.settings.sound);
         if (k === 'music') setMusic(app.settings.music);
+        if (k === 'ambience') setAmbience(app.settings.ambience);
         app.world.applyQuality();
         break;
       }
@@ -648,6 +649,7 @@ export class Panels {
         app.loadFromCloud();
         return;
       }
+      case 'skipTrack': skipTrack(); setTimeout(() => this.refresh(true), 300); break;
       case 'syncNow': app.save.saveLocal(); app.save.pushCloud(); g.toast('Gespeichert', 'good'); break;
       case 'export': {
         const fname = `${g.state.name.replace(/[^\wäöüÄÖÜß-]+/g, '_')}.json`;
