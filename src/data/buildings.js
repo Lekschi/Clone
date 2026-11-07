@@ -109,6 +109,12 @@ add({ id: 'theater', name: 'Theater', cat: 'leisure', group: 'fun', size: [2, 2]
   desc: 'Bühne für Oper, Schauspiel und Ballett.' });
 add({ id: 'stadium', name: 'Stadion', cat: 'leisure', group: 'fun', size: [3, 3], cost: 36000, costStep: 1.3, level: 14, boost: { kind: 'fun', pct: 26, r: 12 },
   desc: 'Samstags bebt die ganze Stadt.' });
+add({ id: 'busdepot', name: 'Busbahnhof', cat: 'leisure', group: 'transport', size: [2, 2], cost: 7000, costStep: 1.3, level: 9, boost: { kind: 'transport', pct: 9, r: 6 },
+  desc: 'Busse verbinden die Viertel miteinander.' });
+add({ id: 'trainstation', name: 'Hauptbahnhof', cat: 'leisure', group: 'transport', size: [3, 2], cost: 22000, costStep: 1.3, level: 13, boost: { kind: 'transport', pct: 18, r: 10 },
+  desc: 'Züge bringen Pendler und Besucher in die Stadt.' });
+add({ id: 'airport', name: 'Flughafen', cat: 'leisure', group: 'transport', size: [4, 3], cost: 60000, costStep: 1.5, level: 20, boost: { kind: 'transport', pct: 34, r: 16 }, max: 1, pollution: 2,
+  desc: 'Das Tor zur Welt – lockt Menschen aus dem ganzen Land an.' });
 add({ id: 'clocktower', name: 'Uhrturm', cat: 'leisure', group: 'landmark', size: [1, 1], cost: 9000, costStep: 1.4, level: 12, boost: { kind: 'landmark', pct: 14, r: 7 },
   desc: 'Ein Wahrzeichen, das jeder kennt.' });
 add({ id: 'tvtower', name: 'Fernsehturm', cat: 'leisure', group: 'landmark', size: [2, 2], cost: 45000, costStep: 1.4, level: 18, boost: { kind: 'landmark', pct: 32, r: 14 },
@@ -137,7 +143,7 @@ export const ROAD_COST = 10;
 
 export const UTIL_NAMES = { power: 'Strom', water: 'Wasser', sewage: 'Abwasser', waste: 'Müllabfuhr' };
 export const SERVICE_NAMES = { fire: 'Feuerwehr', police: 'Polizei', health: 'Gesundheit' };
-export const BOOST_NAMES = { park: 'Parks', edu: 'Bildung', fun: 'Unterhaltung', landmark: 'Wahrzeichen' };
+export const BOOST_NAMES = { park: 'Parks', edu: 'Bildung', fun: 'Unterhaltung', transport: 'Verkehr', landmark: 'Wahrzeichen' };
 
 export function maxCount(def, level) {
   if (def.maxFn) return def.maxFn(level);

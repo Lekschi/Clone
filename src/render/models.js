@@ -906,6 +906,76 @@ function tvTower(b) {
   tree(b, 0.75, -0.75, 0.8, 0, 2);
 }
 
+// ============================================================================ transport
+function bus(b, x, z, ry, color) {
+  b.box(0.36, 0.1, 0.11, M.color(color, { rough: 0.4, metal: 0.2 }), x, B0 + 0.015, z, ry);
+  b.box(0.34, 0.035, 0.112, M.color('#2a3846', { rough: 0.2, metal: 0.4 }), x, B0 + 0.07, z, ry);
+}
+
+function busDepot(b, v) {
+  lot(b, 2, 2, 'plain');
+  const steel = M.color('#d7dbe0', { metal: 0.5, rough: 0.4 });
+  for (let i = 0; i < 4; i++) for (const z of [-0.55, 0.15]) b.cyl(0.02, 0.02, 0.32, steel, -0.75 + i * 0.5, B0, z, 8);
+  b.box(1.7, 0.03, 0.9, M.color('#f0f2f4'), 0, B0 + 0.32, -0.2);
+  b.box(1.7, 0.012, 0.9, M.glass(), 0, B0 + 0.35, -0.2);
+  for (let i = 0; i < 3; i++) bus(b, -0.55 + i * 0.55, -0.2, Math.PI / 2, ['#f2c230', '#e2574c', '#2f8fd8'][(i + v) % 3]);
+  b.box(0.6, 0.25, 0.3, { side: M.facade('modern', '#e6eef2'), top: M.roof('gravel') }, 0.55, B0, 0.62);
+  b.sign('BUSBAHNHOF', 0.55, 0.08, '#2f6db1', '#ffffff', 0.55, B0 + 0.2, 0.775);
+  bench(b, -0.4, 0.55);
+  bench(b, -0.1, 0.55);
+  tree(b, -0.8, 0.75, 0.6, 2, v);
+}
+
+function trainStation(b, v) {
+  lot(b, 3, 2, 'paving');
+  const brick = M.facade('brick', '#ffffff');
+  b.box(1.0, 0.55, 0.55, { side: brick, top: M.roof('gravel') }, 0, B0, 0.42);
+  b.gable(1.0, 0.55, 0.22, M.roof('tiles', '#4f6a78'), brick, 0, B0 + 0.55, 0.42);
+  b.box(0.22, 0.95, 0.22, { side: brick, top: M.roof('gravel') }, 0.62, B0, 0.5);
+  b.cone(0.17, 0.25, M.color('#4f6a78', { metal: 0.4 }), 0.62, B0 + 0.95, 0.5, 4, Math.PI / 4);
+  for (let i = 0; i < 4; i++) { const a = i * Math.PI / 2; b.push(new THREE.CircleGeometry(0.07, 20), M.glow('#fff8e6'), 0.62 + Math.sin(a) * 0.112, B0 + 0.82, 0.5 + Math.cos(a) * 0.112, a); }
+  b.sign('HAUPTBAHNHOF', 0.8, 0.1, '#344150', '#ffffff', 0, B0 + 0.45, 0.701);
+  // arched train shed
+  const shed = new THREE.CylinderGeometry(0.42, 0.42, 2.6, 24, 1, true, 0, Math.PI);
+  b.push(shed, M.color('#9fb3c4', { metal: 0.5, rough: 0.35, double: true }), 0, B0 + 0.12, -0.45, 0, 0, Math.PI / 2);
+  for (let i = 0; i < 6; i++) b.cyl(0.43, 0.43, 0.025, M.color('#5a6b7d', { metal: 0.6, double: true }), -1.25 + i * 0.5, B0 + 0.12, -0.45, 24, { open: true, rz: Math.PI / 2 });
+  const rail = M.color('#6b6f75', { metal: 0.6 });
+  for (const z of [-0.62, -0.28]) { b.box(2.9, 0.012, 0.012, rail, 0, B0, z - 0.05); b.box(2.9, 0.012, 0.012, rail, 0, B0, z + 0.05); }
+  b.box(0.9, 0.12, 0.12, M.color('#e8e8e8', { rough: 0.3, metal: 0.3 }), -0.6, B0 + 0.01, -0.62);
+  b.box(0.9, 0.12, 0.12, M.color('#c6372d', { rough: 0.3, metal: 0.3 }), 0.4, B0 + 0.01, -0.28);
+  b.box(0.9, 0.035, 0.125, M.color('#2a3846'), -0.6, B0 + 0.09, -0.62);
+  b.box(0.9, 0.035, 0.125, M.color('#2a3846'), 0.4, B0 + 0.09, -0.28);
+  tree(b, -1.2, 0.6, 0.7, 2, v);
+  tree(b, 1.2, 0.6, 0.7, 2, v + 1);
+}
+
+function plane(b, x, z, ry, s = 1) {
+  const w = M.color('#f4f6f8', { rough: 0.3, metal: 0.2 });
+  b.cyl(0.05 * s, 0.05 * s, 0.7 * s, w, x, B0 + 0.08, z, 12, { rz: Math.PI / 2, ry });
+  const c = Math.cos(ry), sn = Math.sin(ry);
+  b.box(0.18 * s, 0.012, 0.75 * s, w, x - c * 0.02, B0 + 0.12, z + sn * 0.02, ry);
+  b.box(0.1 * s, 0.01, 0.28 * s, w, x - c * 0.3 * s, B0 + 0.14, z + sn * 0.3 * s, ry);
+  b.box(0.1 * s, 0.14 * s, 0.012, M.color('#2f6db1'), x - c * 0.32 * s, B0 + 0.14, z + sn * 0.32 * s, ry);
+}
+
+function airport(b, v) {
+  lot(b, 4, 3, 'plain');
+  b.box(3.8, 0.012, 0.42, M.color('#3d4249'), 0, B0, -1.0);
+  for (let i = 0; i < 12; i++) b.box(0.16, 0.014, 0.025, M.color('#ffffff'), -1.7 + i * 0.31, B0, -1.0);
+  b.box(2.2, 0.35, 0.6, { side: M.facade('glass', '#ffffff'), top: M.roof('metal', '#c9d2da') }, -0.4, B0, 0.6);
+  const roof = new THREE.CylinderGeometry(0.5, 0.5, 2.3, 24, 1, false, 0, Math.PI);
+  b.push(roof, M.color('#e6ebf0', { metal: 0.4, rough: 0.35, double: true }), -0.4, B0 + 0.35, 0.6, 0, 0, Math.PI / 2, 0.3, 1, 0.62);
+  b.cyl(0.06, 0.08, 1.1, M.color('#e8ecef'), 1.35, B0, 0.55, 12);
+  b.cyl(0.16, 0.12, 0.16, M.facade('glassdark', '#ffffff'), 1.35, B0 + 1.1, 0.55, 12, { facade: true });
+  b.cyl(0.18, 0.18, 0.03, M.color('#e8ecef'), 1.35, B0 + 1.26, 0.55, 12);
+  b.sign('FLUGHAFEN', 0.8, 0.1, '#1f3b5a', '#ffffff', -0.4, B0 + 0.28, 0.905);
+  plane(b, -0.9, -0.05, 0.2);
+  plane(b, 0.35, -0.1, -0.15, 0.9);
+  plane(b, 1.2, -1.0, 0, 1.1);
+  for (let i = 0; i < 3; i++) b.box(0.05, 0.05, 0.3, M.color('#c9d2da'), -1.2 + i * 0.6, B0 + 0.14, 0.18);
+  for (let i = 0; i < 4; i++) car(b, -1.6 + i * 0.3, 1.25, Math.PI / 2, PAL.cars[(i + v) % 9]);
+}
+
 // ============================================================================ fixed
 function cityHall(b) {
   lot(b, 2, 2, 'paving');
@@ -952,7 +1022,7 @@ const MODELS = {
   factory, bigfactory: bigFactory, ecofactory: ecoFactory,
   bausupply, hardware, farmers, furniture, garden, bakery, fashion, electro, market: marketHall, cargo: cargoStation,
   park, playground, plaza, citypark: cityPark, school, library, highschool, university, cinema, theater, stadium,
-  clocktower: clockTower, tvtower: tvTower,
+  clocktower: clockTower, tvtower: tvTower, busdepot: busDepot, trainstation: trainStation, airport,
   cityhall: cityHall, storage,
 };
 

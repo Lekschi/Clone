@@ -430,6 +430,7 @@ export class World {
       let ring = null;
       if (radius) {
         const col = def.pollution && !def.service && !def.boost ? '#c0603a' : def.boost ? '#7ad957' : '#4aa8ff';
+        void col;
         ring = new THREE.Mesh(new THREE.CircleGeometry(radius + Math.max(w, d) / 2 + 1, 64), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.16, depthWrite: false }));
         ring.rotation.x = -Math.PI / 2;
         ring.position.y = 0.035;
@@ -579,7 +580,12 @@ export class World {
     this.night = 1 - day;
     const az = t * Math.PI * 2 + 0.6;
     const elev = 0.5 + Math.abs(e) * 0.32;
-    const dir = new THREE.Vector3(Math.cos(az) * Math.cos(elev), Math.sin(elev), Math.sin(az) * Math.cos(elev));
+    const C = this._lc || (this._lc = {
+      dir: new THREE.Vector3(), sunDay: new THREE.Color('#fff3df'), sunDusk: new THREE.Color('#ffae6b'), moon: new THREE.Color('#9fb6ff'),
+      hemiN: new THREE.Color('#1d2b4d'), hemiD: new THREE.Color('#d6e9ff'), gN: new THREE.Color('#1a1f1a'), gD: new THREE.Color('#6f7d58'),
+      fogDay: new THREE.Color('#bfd8ec'), fogDusk: new THREE.Color('#e8b48e'), fogNight: new THREE.Color('#0d1528'), tmp: new THREE.Color(),
+    });
+    const dir = C.dir.set(Math.cos(az) * Math.cos(elev), Math.sin(elev), Math.sin(az) * Math.cos(elev));
     if (day < 0.5) dir.set(-dir.x, dir.y, -dir.z);
     const c = this.cam;
     const tgt = c.target;
@@ -588,17 +594,13 @@ export class World {
     const half = Math.max(12, Math.min(70, c.dist * 0.95));
     const sc = this.sun.shadow.camera;
     if (sc.right !== half) { sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.near = 1; sc.far = 160; sc.updateProjectionMatrix(); }
-    const sunDay = new THREE.Color('#fff3df'), sunDusk = new THREE.Color('#ffae6b'), moon = new THREE.Color('#9fb6ff');
-    const sunCol = moon.clone().lerp(sunDusk, smooth(0, 0.5, day)).lerp(sunDay, smooth(0.5, 1, day) * (1 - dusk * 0.8));
-    this.sun.color.copy(sunCol);
+    this.sun.color.copy(C.moon).lerp(C.sunDusk, smooth(0, 0.5, day)).lerp(C.sunDay, smooth(0.5, 1, day) * (1 - dusk * 0.8));
     this.sun.intensity = 0.45 + day * 2.3;
     this.hemi.intensity = 0.28 + day * 0.7;
-    this.hemi.color.set('#1d2b4d').lerp(new THREE.Color('#d6e9ff'), day);
-    this.hemi.groundColor.set('#1a1f1a').lerp(new THREE.Color('#6f7d58'), day);
-    const fogDay = new THREE.Color('#bfd8ec'), fogDusk = new THREE.Color('#e8b48e'), fogNight = new THREE.Color('#0d1528');
-    const fogC = fogNight.clone().lerp(fogDusk, smooth(0, 0.6, day)).lerp(fogDay, smooth(0.55, 1, day) * (1 - dusk));
-    this.fog.color.copy(fogC);
-    this.scene.background.copy(fogC);
+    this.hemi.color.copy(C.hemiN).lerp(C.hemiD, day);
+    this.hemi.groundColor.copy(C.gN).lerp(C.gD, day);
+    this.fog.color.copy(C.fogNight).lerp(C.fogDusk, smooth(0, 0.6, day)).lerp(C.fogDay, smooth(0.55, 1, day) * (1 - dusk));
+    this.scene.background.copy(this.fog.color);
     this.fog.near = c.dist * 1.8 + 20;
     this.fog.far = c.dist * 4 + 160;
     this.scene.environmentIntensity = 0.12 + day * 0.38;

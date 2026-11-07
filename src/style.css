@@ -288,7 +288,8 @@ button.card:active:not(:disabled) { transform: scale(.97); }
 .build-menu { position: absolute; left: 0; right: 0; bottom: 0; z-index: 30; background: rgba(247,249,252,.97); border-radius: 28px 28px 0 0; box-shadow: 0 -12px 40px rgba(0,0,0,.25);
   padding: 10px 0 calc(12px + var(--sab)); transform: translateY(105%); transition: transform .24s cubic-bezier(.2,.9,.3,1.1); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
 .build-menu.in { transform: none; }
-.bm-x { position: absolute; right: 14px; top: 10px; }
+.bm-x { position: absolute; right: 14px; top: -56px; width: 46px; height: 46px; background: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+.bm-tabs { padding-right: 14px !important; }
 .bm-tabs { display: flex; gap: 6px; padding: 0 70px 8px 14px; overflow-x: auto; scrollbar-width: none; }
 .bm-tabs::-webkit-scrollbar, .bm-list::-webkit-scrollbar { display: none; }
 .bm-tab { position: relative; display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 14px; font-weight: 800; color: var(--ink2); white-space: nowrap; background: #fff; box-shadow: 0 0 0 2px var(--line) inset; }
