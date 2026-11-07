@@ -160,14 +160,14 @@ export function roadTexture(n, e, s, w) {
   return memo(`road${+n}${+e}${+s}${+w}`, () => {
     const S = 256, c = canvas(S), ctx = c.getContext('2d');
     const rnd = mulberry32(n * 1 + e * 2 + s * 4 + w * 8 + 31);
-    const side = Math.round(S * 0.17);
+    const side = Math.round(S * 0.125);
     // asphalt
-    ctx.fillStyle = '#50545b';
+    ctx.fillStyle = '#464c57';
     ctx.fillRect(0, 0, S, S);
     noise(ctx, S, S, 5000, rnd, 1, 0.16);
     // sidewalks along closed edges + corners
     const walk = (x, y, ww, hh) => {
-      ctx.fillStyle = '#c4c0b6';
+      ctx.fillStyle = '#cdd0d2';
       ctx.fillRect(x, y, ww, hh);
       ctx.strokeStyle = 'rgba(0,0,0,0.08)';
       ctx.lineWidth = 1;
@@ -232,7 +232,7 @@ export function roadTexture(n, e, s, w) {
       ctx.stroke();
       ctx.restore();
       // round off the outer corner with sidewalk
-      ctx.fillStyle = '#c4c0b6';
+      ctx.fillStyle = '#cdd0d2';
       const ox = e ? 0 : S, oy = s ? 0 : S;
       ctx.beginPath();
       ctx.moveTo(ox, oy);

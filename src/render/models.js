@@ -416,6 +416,16 @@ function fireBig(b) {
   }
 }
 
+function helipad(b, x, y, z) {
+  b.cyl(0.3, 0.3, 0.03, M.color('#3b3f44'), x, y, z, 24);
+  b.cyl(0.24, 0.24, 0.032, M.color('#f2c230'), x, y, z, 24);
+  b.cyl(0.22, 0.22, 0.034, M.color('#3b3f44'), x, y, z, 24);
+  const w = M.color('#ffffff');
+  b.box(0.035, 0.006, 0.2, w, x - 0.06, y + 0.034, z);
+  b.box(0.035, 0.006, 0.2, w, x + 0.06, y + 0.034, z);
+  b.box(0.12, 0.006, 0.035, w, x, y + 0.034, z);
+}
+
 function policeSmall(b) {
   lot(b, 1, 1, 'paving');
   b.box(0.72, 0.45, 0.55, { side: M.facade('modern', '#e8eef5'), top: M.roof('gravel') }, 0, B0, -0.15);
@@ -431,8 +441,7 @@ function policeBig(b) {
   lot(b, 2, 2, 'paving');
   b.box(1.5, 0.95, 0.85, { side: M.facade('office', '#e9eef4'), top: M.roof('gravel') }, 0, B0, -0.4);
   b.box(1.52, 0.06, 0.87, M.color('#1f4ea8'), 0, B0 + 0.25, -0.4);
-  b.cyl(0.3, 0.3, 0.03, M.color('#3b3f44'), 0.3, B0 + 0.95, -0.4, 24);
-  b.plane(0.3, 0.3, M.sign('H', '#3b3f44', '#ffffff'), 0.3, B0 + 0.985, -0.4);
+  helipad(b, 0.3, B0 + 0.95, -0.4);
   b.sign('POLIZEI', 0.7, 0.12, '#1f4ea8', '#ffffff', 0, B0 + 0.12, 0.031);
   for (let i = 0; i < 3; i++) car(b, -0.6 + i * 0.35, 0.55, Math.PI / 2, i === 1 ? '#1f4ea8' : '#f4f6f8');
 }
@@ -450,8 +459,7 @@ function hospital(b) {
   lot(b, 2, 2, 'paving');
   b.box(1.7, 0.5, 1.0, { side: M.facade('clinic', '#ffffff'), top: M.roof('gravel') }, 0, B0, -0.3);
   b.box(0.8, 1.4, 0.8, { side: M.facade('clinic', '#f1f6fa'), top: M.roof('gravel') }, -0.35, B0 + 0.5, -0.4);
-  b.cyl(0.3, 0.3, 0.03, M.color('#3b3f44'), 0.45, B0 + 0.5, -0.35, 24);
-  b.plane(0.3, 0.3, M.sign('H', '#3b3f44', '#ffffff'), 0.45, B0 + 0.535, -0.35);
+  helipad(b, 0.45, B0 + 0.5, -0.35);
   b.box(0.3, 0.1, 0.02, M.color('#e03a3a'), -0.35, B0 + 1.65, 0.01);
   b.box(0.1, 0.3, 0.02, M.color('#e03a3a'), -0.35, B0 + 1.55, 0.01);
   b.box(0.7, 0.03, 0.3, M.color('#e8e8e8'), 0.3, B0 + 0.25, 0.35);
@@ -856,9 +864,10 @@ function stadium(b) {
   lot(b, 3, 3, 'paving');
   const pts = [];
   b.cyl(1.35, 1.25, 0.5, M.color('#e3e6ea'), 0, B0, 0, 40, { open: true });
-  b.cyl(1.3, 0.85, 0.5, M.color('#c23b3b'), 0, B0, 0, 40, { open: true });
+  b.cyl(1.3, 0.85, 0.5, M.color('#c23b3b', { double: true }), 0, B0, 0, 40, { open: true });
+  for (let i = 1; i < 5; i++) b.cyl(0.85 + i * 0.09 + 0.004, 0.85 + i * 0.09, 0.012, M.color('#ffffff', { double: true }), 0, B0 + i * 0.1 - 0.006, 0, 40, { open: true });
   b.cyl(0.85, 0.85, 0.02, M.roof('field'), 0, B0, 0, 40);
-  b.cyl(1.42, 1.42, 0.05, M.color('#f4f4f4'), 0, B0 + 0.55, 0, 40, { open: true });
+  b.cyl(1.42, 1.42, 0.05, M.color('#f4f4f4', { double: true }), 0, B0 + 0.55, 0, 40, { open: true });
   for (let i = 0; i < 4; i++) {
     const a = Math.PI / 4 + i * Math.PI / 2;
     const x = Math.cos(a) * 1.35, z = Math.sin(a) * 1.35;

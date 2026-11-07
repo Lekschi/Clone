@@ -21,8 +21,8 @@ export class World {
     this.container = container;
     const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     r.outputColorSpace = THREE.SRGBColorSpace;
-    r.toneMapping = THREE.ACESFilmicToneMapping;
-    r.toneMappingExposure = 1.05;
+    r.toneMapping = THREE.NeutralToneMapping;
+    r.toneMappingExposure = 0.92;
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(r.domElement);
@@ -83,6 +83,8 @@ export class World {
     this.objs = new Map();
     this.anims = [];
     this.traffic = new Traffic(scene, game, HIGHWAY_Z);
+    this.walkers = new Traffic(scene, game, HIGHWAY_Z, { walkers: true });
+    this.walkers.mesh.castShadow = false;
     this.particles = new Particles(scene);
     this.clouds = new Clouds(scene, game.W / 2, game.H / 2);
 
@@ -201,6 +203,7 @@ export class World {
     }
     this.buildLamps(groups);
     this.traffic.setRoads();
+    this.walkers?.setRoads();
   }
 
   // Street lights along straight road segments; their heads glow at night.
@@ -599,7 +602,7 @@ export class World {
     this.fog.near = c.dist * 1.8 + 20;
     this.fog.far = c.dist * 4 + 160;
     this.scene.environmentIntensity = 0.12 + day * 0.38;
-    this.renderer.toneMappingExposure = 0.95 + (1 - day) * 0.25;
+    this.renderer.toneMappingExposure = 0.9 + (1 - day) * 0.25;
     const lit = smooth(0.35, 0.85, this.night);
     for (const m of nightMaterials) {
       if (m.userData.sign) m.emissiveIntensity = 0.15 + lit * 0.9;
@@ -622,6 +625,8 @@ export class World {
     for (const { obj } of this.objs.values()) for (const r of obj.userData.rotors) r.rotation.z += dt * r.userData.spin.speed;
     if (this.selRing) this.selRing.material.opacity = 0.35 + Math.sin(performance.now() / 200) * 0.2;
     this.traffic.update(dt);
+    if (this.cam.dist < 40) this.walkers.update(dt);
+    this.walkers.mesh.visible = this.cam.dist < 40;
     this.particles.update(dt, this.night > 0.6);
     this.clouds.update(dt);
     this.clouds.setOpacity(smooth(30, 60, this.cam.dist));

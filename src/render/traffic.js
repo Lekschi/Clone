@@ -30,22 +30,49 @@ function carGeometry() {
   return g;
 }
 
+function walkerGeometry() {
+  const body = new THREE.CylinderGeometry(0.014, 0.017, 0.055, 6);
+  body.translate(0, 0.0275, 0);
+  const head = new THREE.SphereGeometry(0.012, 6, 4);
+  head.translate(0, 0.068, 0);
+  const parts = [body.toNonIndexed(), head.toNonIndexed()];
+  const g = new THREE.BufferGeometry();
+  for (const name of ['position', 'normal']) {
+    const len = parts.reduce((a, p) => a + p.attributes[name].array.length, 0);
+    const arr = new Float32Array(len);
+    let o = 0;
+    for (const p of parts) { arr.set(p.attributes[name].array, o); o += p.attributes[name].array.length; }
+    g.setAttribute(name, new THREE.BufferAttribute(arr, 3));
+  }
+  const col = new Float32Array(g.attributes.position.count * 3);
+  const nb = parts[0].attributes.position.count;
+  for (let i = 0; i < g.attributes.position.count; i++) {
+    const skin = i >= nb;
+    col[i * 3] = skin ? 1.0 : 1; col[i * 3 + 1] = skin ? 0.82 : 1; col[i * 3 + 2] = skin ? 0.66 : 1;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
 export class Traffic {
-  constructor(scene, game, highwayZ) {
+  constructor(scene, game, highwayZ, opts = {}) {
     this.game = game;
     this.hz = highwayZ;
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.35, metalness: 0.3 });
-    this.mesh = new THREE.InstancedMesh(carGeometry(), mat, MAX);
+    this.walkers = !!opts.walkers;
+    this.lane = this.walkers ? 0.41 : 0.15;
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: this.walkers ? 0.8 : 0.35, metalness: this.walkers ? 0 : 0.3 });
+    this.mesh = new THREE.InstancedMesh(this.walkers ? walkerGeometry() : carGeometry(), mat, MAX);
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = false;
     this.mesh.frustumCulled = false;
     this.mesh.count = 0;
     const c = new THREE.Color();
-    for (let i = 0; i < MAX; i++) { c.set(PAL.cars[i % PAL.cars.length]); this.mesh.setColorAt(i, c); }
+    const shirts = ['#e94b3c', '#2f8fd8', '#f2c230', '#3cae7e', '#8c5ad6', '#ffffff', '#2c2f35', '#e57a2e', '#e46aa4'];
+    for (let i = 0; i < MAX; i++) { c.set(this.walkers ? shirts[i % shirts.length] : PAL.cars[i % PAL.cars.length]); this.mesh.setColorAt(i, c); }
     scene.add(this.mesh);
     this.cars = [];
     this.hwCars = [];
-    for (let i = 0; i < 14; i++) this.hwCars.push({ x: -240 + Math.random() * 240, dir: i % 2 ? 1 : -1, speed: 2.2 + Math.random() * 1.2 });
+    for (let i = 0; i < (this.walkers ? 0 : 14); i++) this.hwCars.push({ x: -240 + Math.random() * 240, dir: i % 2 ? 1 : -1, speed: 2.2 + Math.random() * 1.2 });
     this.m4 = new THREE.Matrix4();
     this.q = new THREE.Quaternion();
     this.p = new THREE.Vector3();
@@ -75,7 +102,7 @@ export class Traffic {
       const ns = this.neighbors(x, z);
       if (!ns.length) continue;
       const d = ns[Math.floor(Math.random() * ns.length)];
-      this.cars.push({ x, z, din: d, dout: d, nx: x + DIRS[d][0], nz: z + DIRS[d][1], t: Math.random(), speed: 0.9 + Math.random() * 0.5 });
+      this.cars.push({ x, z, din: d, dout: d, nx: x + DIRS[d][0], nz: z + DIRS[d][1], t: Math.random(), speed: this.walkers ? 0.12 + Math.random() * 0.08 : 0.9 + Math.random() * 0.5, side: Math.random() < 0.5 ? 1 : -1 });
       this.pickNext(this.cars[this.cars.length - 1]);
       return;
     }
@@ -97,11 +124,13 @@ export class Traffic {
 
   update(dt, target) {
     const g = this.game;
-    const want = Math.min(MAX - this.hwCars.length, Math.floor(this.roads.length * 0.22), 4 + Math.floor(g.city.pop / 35));
+    const want = this.walkers
+      ? Math.min(MAX, Math.floor(this.roads.length * 0.3), Math.floor(g.city.pop / 45))
+      : Math.min(MAX - this.hwCars.length, Math.floor(this.roads.length * 0.22), 4 + Math.floor(g.city.pop / 35));
     if (this.cars.length < want && Math.random() < 0.3) this.spawn();
     if (this.cars.length > want + 3) this.cars.pop();
     let i = 0;
-    const lane = 0.15;
+    const lane = this.lane;
     for (const c of this.cars) {
       c.t += dt * c.speed;
       while (c.t >= 1 && !c.dead) {
@@ -130,9 +159,10 @@ export class Traffic {
       }
       const len = Math.hypot(tx, tz) || 1;
       tx /= len; tz /= len;
-      px += -tz * lane; pz += tx * lane;
+      const ln = this.walkers ? lane * c.side : lane;
+      px += -tz * ln; pz += tx * ln;
       this.q.setFromAxisAngle(this.up, Math.atan2(-tz, tx));
-      this.p.set(px, 0.012, pz);
+      this.p.set(px, this.walkers ? 0.014 + Math.abs(Math.sin(c.t * 40)) * 0.004 : 0.012, pz);
       this.m4.compose(this.p, this.q, this.s);
       this.mesh.setMatrixAt(i++, this.m4);
     }

@@ -4,6 +4,7 @@ import { ITEMS } from '../data/items.js';
 import { BUILDINGS, BUILD_ORDER } from '../data/buildings.js';
 import { UTIL_NAMES } from '../data/buildings.js';
 import { sfx } from '../audio.js';
+import { questProgress } from '../game/quests.js';
 
 export class Hud {
   constructor(app) {
@@ -39,6 +40,7 @@ export class Hud {
       <div class="hud-br">
         <button class="build-btn" data-act="build"><span class="bb-ic">${icon('home')}</span><span>Bauen</span><i class="badge new-badge"></i></button>
       </div>
+      <button class="ticker hidden" data-act="quests"></button>
       <div class="view-bar hidden"></div>
       <div id="toasts"></div>
     </div>`);
@@ -79,6 +81,17 @@ export class Hud {
     const qb = $('.q-badge', this.el);
     qb.textContent = done || '';
     qb.style.display = done ? '' : 'none';
+    // next task ticker
+    const tk = $('.ticker', this.el);
+    const qs = S.quests.active;
+    const ready = qs.find((q) => g.questDone(q));
+    const next = ready || qs[0];
+    if (next) {
+      const p = Math.min(next.n, Math.max(0, questProgress(g, next)));
+      tk.innerHTML = ready ? `${icon('xp')}<span><b>Aufgabe erledigt!</b> ${next.text}</span><em>Abholen</em>` : `${icon('list')}<span>${next.text}</span><em>${num(p)}/${num(next.n)}</em>`;
+      tk.classList.toggle('done', !!ready);
+      tk.classList.remove('hidden');
+    } else tk.classList.add('hidden');
     // utility shortages
     const short = Object.keys(UTIL_NAMES).filter((k) => g.city.demand[k] > g.city.supply[k] && g.city.demand[k] > 0 && (k !== 'sewage' || S.level >= 2) && (k !== 'waste' || S.level >= 2));
     $('.warn-utils', this.el).innerHTML = short.map((k) => `<span class="warn">${icon(k)}</span>`).join('');

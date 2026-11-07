@@ -86,7 +86,7 @@ export const STORAGE_PARTS = SPECIAL.filter((s) => s[3] === 'storage').map((s) =
 export const EXPAND_PARTS = SPECIAL.filter((s) => s[3] === 'expand').map((s) => s[0]);
 
 for (const [id, name, icon, time, level] of RAW) {
-  ITEMS[id] = { id, name, icon, kind: 'raw', time, level, req: null, value: Math.round(4 + (time / 60) * 7) };
+  ITEMS[id] = { id, name, icon, kind: 'raw', time, level, req: null, value: Math.round(6 + (time / 60) * 10) };
   RAW_IDS.push(id);
 }
 for (const [id, name, icon, shop, time, level, req] of GOODS) {
@@ -103,8 +103,8 @@ function valueOf(id) {
   if (it.value != null) return it.value;
   let v = 0;
   for (const [k, n] of Object.entries(it.req)) v += valueOf(k) * n;
-  v += (it.time / 60) * 6;
-  it.value = Math.round((v * 1.08) / 5) * 5;
+  v += (it.time / 60) * 8;
+  it.value = Math.round((v * 1.1) / 5) * 5;
   return it.value;
 }
 for (const id of Object.keys(ITEMS)) {

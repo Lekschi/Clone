@@ -44,7 +44,7 @@ export class Bubbles {
         const acc = g.state.taxes.acc;
         if (acc >= Math.max(15, g.taxCap() * 0.2)) { kind = 'taxes'; html = icon('coin'); cls = 'ready'; }
       } else if (b.type === 'market') {
-        if (g.state.market.sales.some((s) => s.soldAt <= now)) { kind = 'open'; html = icon('coin'); cls = 'ready'; }
+        if (g.state.market.sales.some((s) => s.soldAt <= now) || this.app.gm?.soldWaiting()) { kind = 'open'; html = icon('coin'); cls = 'ready'; }
       } else if (b.type === 'cargo') {
         const c = g.state.cargo;
         if (!c.returnAt && c.wagons.some((w) => !w.done && g.stored(w.item) >= w.qty)) { kind = 'open'; html = icon('train'); cls = 'ready'; }

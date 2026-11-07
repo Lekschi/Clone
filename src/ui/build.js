@@ -79,6 +79,12 @@ export class BuildMenu {
     }
     $('.bm-list', this.el).innerHTML = cards;
     $('.bm-list', this.el).scrollLeft = 0;
+    // everything shown in this tab now counts as seen (the NEU tags stay until the menu is reopened)
+    let marked = false;
+    for (const id of BUILD_ORDER) {
+      if (BUILDINGS[id].cat === this.cat && BUILDINGS[id].level <= S.level && !S.seen[`b:${id}`]) { S.seen[`b:${id}`] = 1; marked = true; }
+    }
+    if (marked) setTimeout(() => g.emit('change'), 0);
   }
 }
 

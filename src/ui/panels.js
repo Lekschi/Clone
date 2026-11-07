@@ -285,7 +285,7 @@ export class Panels {
       return `<div class="ubar ${ok ? '' : 'bad'}">${icon(k)}<div class="ub"><div class="ub-t"><span>${UTIL_NAMES[k]}</span><b>${dem} / ${sup}</b></div><div class="bar"><i style="width:${sup ? Math.min(100, dem / sup * 100) : dem ? 100 : 0}%"></i></div></div></div>`;
     }).join('');
     const tips = [];
-    for (const k of Object.keys(UTIL_NAMES)) if (g.city.demand[k] > g.city.supply[k] && !((k === 'sewage' || k === 'waste') && S.level < 2)) tips.push(`Zu wenig ${UTIL_NAMES[k]} – baue mehr Versorgung unter „Bauen › Versorgung“.`);
+    for (const k of Object.keys(UTIL_NAMES)) if (g.city.demand[k] > g.city.supply[k] && !((k === 'sewage' || k === 'waste') && S.level < 2)) tips.push(`${UTIL_NAMES[k]}: Der Bedarf ist größer als die Kapazität – baue mehr unter „Bauen › Versorgung“.`);
     if (pol > 30) tips.push('Viele Häuser leiden unter Abgasen. Halte Fabriken und Kraftwerke von Wohngebieten fern.');
     if (S.level >= 3 && cov('fire') < 70) tips.push('Nicht alle Häuser sind vor Feuer geschützt.');
     if (g.storageFree() < 5) tips.push('Dein Lager ist fast voll. Verkaufe Waren oder baue Häuser damit aus.');
@@ -314,7 +314,8 @@ export class Panels {
   r_market(c) {
     const g = this.game, m = g.state.market;
     const now = Date.now();
-    const tabs = `<div class="tabs"><button class="tab ${c.tab === 0 ? 'on' : ''}" data-act="tab" data-arg="0">Einkaufen</button><button class="tab ${c.tab === 1 ? 'on' : ''}" data-act="tab" data-arg="1">Verkaufen</button></div>`;
+    const gm = this.app.gm;
+    const tabs = `<div class="tabs"><button class="tab ${c.tab === 0 ? 'on' : ''}" data-act="tab" data-arg="0">Händler</button><button class="tab ${c.tab === 1 ? 'on' : ''}" data-act="tab" data-arg="1">Verkaufen</button>${gm.available ? `<button class="tab ${c.tab === 2 ? 'on' : ''}" data-act="tab" data-arg="2">Weltmarkt${gm.soldWaiting() ? ' •' : ''}</button>` : ''}</div>`;
     let body = '';
     if (c.tab === 0) {
       const offers = m.offers.map((o, i) => o.sold
@@ -324,6 +325,17 @@ export class Panels {
       body = `${tabs}<div class="grid offers">${offers}</div>
         <div class="row center"><span class="muted small">Händler aus der Region liefern regelmäßig neue Ware.</span>
         <button class="btn ghost small" data-act="refreshMarket">${wait > 0 ? `Neu laden ${crystals(2)}` : 'Neue Angebote'}</button></div>`;
+    } else if (c.tab === 2 && !c.form && !c.picking) {
+      if (!gm.loaded || Date.now() - gm.loaded > 20000) { if (!gm.loading) { gm.loading = true; gm.refresh().finally(() => { gm.loading = false; }); } }
+      const offers = gm.offers.map((o) => `<button class="card offer" data-act="gBuy" data-arg="${o.id}">${itemIcon(o.item, 'lg')}<b>${o.qty}× ${ITEMS[o.item]?.name || o.item}</b>${coins(o.price)}<span class="muted small">von ${esc(o.sellerName)}</span></button>`).join('');
+      const mine = gm.mine.map((o) => `<div class="card sale ${o.sold ? 'sold' : ''}">${itemIcon(o.item, 'lg')}<b>${o.qty}× ${ITEMS[o.item]?.name || o.item}</b>${coins(o.price)}
+        ${o.sold ? `<button class="btn primary small" data-act="gCollect" data-arg="${o.id}">Einnehmen</button>` : `<span class="muted small">${o.expired ? 'abgelaufen' : 'im Weltmarkt'}</span><button class="btn ghost small" data-act="gCancel" data-arg="${o.id}">${o.expired ? 'Zurücknehmen' : 'Zurückziehen'}</button>`}</div>`).join('');
+      body = `${tabs}${gm.error ? `<div class="note bad">${gm.error}</div>` : ''}
+        <h3>Angebote anderer Städte</h3>
+        <div class="grid offers">${offers || `<p class="muted">${gm.loaded ? 'Gerade bietet niemand etwas an. Schau später wieder vorbei!' : 'Lade…'}</p>`}</div>
+        <h3>Deine Angebote</h3>
+        <div class="grid sales">${mine}<button class="card sale empty" data-act="gNew">+<span>Im Weltmarkt anbieten</span></button></div>
+        <p class="muted small">Hier handelst du mit echten Spielern. Angebotene Waren verlassen sofort dein Lager; sobald jemand kauft, nimmst du die Münzen hier ein. Unverkaufte Angebote laufen nach drei Tagen ab.</p>`;
     } else if (c.form) {
       const f = c.form;
       const it = ITEMS[f.item];
@@ -335,7 +347,7 @@ export class Panels {
           <div class="stepper"><span>Menge</span><button class="btn round-s" data-act="qty" data-arg="-1">−</button><b>${f.qty}</b><button class="btn round-s" data-act="qty" data-arg="1">+</button></div>
           <div class="stepper"><span>Preis</span><button class="btn round-s" data-act="price" data-arg="-1">−</button><b>${coins(f.price)}</b><button class="btn round-s" data-act="price" data-arg="1">+</button></div>
           <p class="muted small">Marktwert ${num(fair)} · Käufer finden sich <b>${speed}</b></p>
-          <div class="row"><button class="btn ghost" data-act="cancelForm">Zurück</button><button class="btn primary" data-act="listSale">Anbieten</button></div>
+          <div class="row"><button class="btn ghost" data-act="cancelForm">Zurück</button><button class="btn primary" data-act="listSale">${f.global ? 'Im Weltmarkt anbieten' : 'Anbieten'}</button></div>
         </div>`;
     } else if (c.picking) {
       const ids = [...RAW_IDS, ...GOOD_IDS].filter((id) => g.stored(id) > 0);
@@ -466,7 +478,7 @@ export class Panels {
           <p class="small">${statusText}${sv.lastCloud ? ` · zuletzt ${new Date(sv.lastCloud).toLocaleTimeString('de-DE')}` : ''}</p>
           <p class="muted small">Dein Spielstand wird automatisch gespeichert. Mit dem Sync-Code spielst du auf einem anderen Gerät weiter.</p>
           <div class="kv"><span>Dein Sync-Code</span><code class="code">${syncCode()}</code><button class="btn ghost small" data-act="copyCode">Kopieren</button></div>
-          <div class="kv"><span>Code eingeben</span><input class="inp" id="codeIn" placeholder="Sync-Code eines anderen Geräts"><button class="btn ghost small" data-act="useCode">Laden</button></div>
+          <div class="kv"><span>Code eingeben</span><input class="inp" id="codeIn" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" autocapitalize="characters" autocomplete="off" spellcheck="false"><button class="btn ghost small" data-act="useCode">Laden</button></div>
           <div class="kv"><span>Server</span><input class="inp" id="serverIn" placeholder="automatisch" value="${esc(st.server || '')}"></div>
           <button class="btn primary small" data-act="syncNow">Jetzt sichern</button>
         </div>
@@ -504,7 +516,7 @@ export class Panels {
     const bid = c?.arg;
     switch (a) {
       case 'close': this.close(); return;
-      case 'tab': c.tab = Number(arg); c.form = null; c.picking = false; c.sel = null; break;
+      case 'tab': c.tab = Number(arg); c.form = null; c.picking = false; c.sel = null; if (c.kind === 'market' && c.tab === 2) app.gm.refresh(); break;
       case 'move': this.close(); app.startMove(Number(arg)); return;
       case 'demolish': {
         if (c.confirmDemolish) { g.demolish(Number(arg)); sfx.remove(); this.close(); return; }
@@ -533,8 +545,8 @@ export class Panels {
       case 'taxes': { const n = g.collectTaxes(); if (n) { sfx.coin(); app.hud.float(el.getBoundingClientRect().left + 60, el.getBoundingClientRect().top, `+${num(n)} ${icon('coin')}`); } break; }
       case 'buyOffer': if (g.buyOffer(Number(arg))) sfx.coin(); break;
       case 'refreshMarket': g.refreshMarket(); break;
-      case 'newSale': c.picking = true; break;
-      case 'pickSell': c.picking = false; c.form = { item: arg, qty: Math.min(g.stored(arg), ITEMS[arg].kind === 'raw' ? 5 : 1), price: 0 }; c.form.price = Math.round(g.fairPrice(arg, c.form.qty) * 1.1); break;
+      case 'newSale': c.picking = true; c.global = false; break;
+      case 'pickSell': c.picking = false; c.form = { item: arg, qty: Math.min(g.stored(arg), ITEMS[arg].kind === 'raw' ? 5 : 1), price: 0, global: !!c.global }; c.form.price = Math.round(g.fairPrice(arg, c.form.qty) * 1.1); break;
       case 'qty': {
         const f = c.form; const r = f.price / g.fairPrice(f.item, f.qty);
         f.qty = Math.max(1, Math.min(g.stored(f.item), 10, f.qty + Number(arg)));
@@ -547,7 +559,14 @@ export class Panels {
         break;
       }
       case 'cancelForm': c.form = null; c.picking = false; break;
-      case 'listSale': if (g.listSale(c.form.item, c.form.qty, c.form.price)) { sfx.coin(); c.form = null; } break;
+      case 'listSale':
+        if (c.form.global) { const f = c.form; c.form = null; app.gm.list(f.item, f.qty, f.price); sfx.coin(); break; }
+        if (g.listSale(c.form.item, c.form.qty, c.form.price)) { sfx.coin(); c.form = null; }
+        break;
+      case 'gNew': c.picking = true; c.global = true; break;
+      case 'gBuy': { const o = app.gm.offers.find((x) => x.id === Number(arg)); if (o) { app.gm.buy(o); sfx.coin(); } break; }
+      case 'gCollect': { const o = app.gm.mine.find((x) => x.id === Number(arg)); if (o) { app.gm.collect(o); sfx.coin(); } break; }
+      case 'gCancel': { const o = app.gm.mine.find((x) => x.id === Number(arg)); if (o) app.gm.cancel(o); break; }
       case 'collectSale': if (g.collectSale(Number(arg))) sfx.coin(); break;
       case 'cancelSale': g.cancelSale(Number(arg)); break;
       case 'buySaleSlot': if (g.buySalesSlot()) sfx.coin(); break;

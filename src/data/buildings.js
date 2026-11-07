@@ -135,7 +135,7 @@ export const CATEGORIES = [
 
 export const ROAD_COST = 10;
 
-export const UTIL_NAMES = { power: 'Strom', water: 'Wasser', sewage: 'Abwasser', waste: 'Müll' };
+export const UTIL_NAMES = { power: 'Strom', water: 'Wasser', sewage: 'Abwasser', waste: 'Müllabfuhr' };
 export const SERVICE_NAMES = { fire: 'Feuerwehr', police: 'Polizei', health: 'Gesundheit' };
 export const BOOST_NAMES = { park: 'Parks', edu: 'Bildung', fun: 'Unterhaltung', landmark: 'Wahrzeichen' };
 

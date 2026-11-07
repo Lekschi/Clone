@@ -6,6 +6,12 @@
 //   GET  /api/save/:id   (X-Key)    → saved state
 //   PUT  /api/save/:id   (X-Key)    → store state; the first write claims the id for that key
 //   POST /api/save/:id?key=…        → same as PUT (used by sendBeacon when the tab closes)
+//   GET  /api/market?id=…           → other players' open offers
+//   GET  /api/market/mine?id=…      → own offers (X-Key)
+//   POST /api/market/list           → { id, name, item, qty, price } (X-Key)
+//   POST /api/market/buy/:lid       → { id } (X-Key)
+//   POST /api/market/collect/:lid   → { id } (X-Key) seller collects the payment
+//   POST /api/market/cancel/:lid    → { id } (X-Key) take an unsold offer back
 
 import http from 'node:http';
 import fs from 'node:fs';
@@ -66,8 +72,89 @@ function readBody(req) {
   });
 }
 
+// ------------------------------------------------------------------ global market
+const MARKET = path.join(DATA, 'market.json');
+let market = { listings: [], next: 1 };
+try { market = JSON.parse(fs.readFileSync(MARKET, 'utf8')); } catch { /* fresh */ }
+let marketTimer = null;
+function saveMarket() {
+  clearTimeout(marketTimer);
+  marketTimer = setTimeout(() => {
+    const tmp = `${MARKET}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(market));
+    fs.renameSync(tmp, MARKET);
+  }, 200);
+}
+function pruneMarket() {
+  const now = Date.now();
+  for (const l of market.listings) if (!l.buyer && !l.expired && now - l.created > 3 * 864e5) l.expired = true;
+  // finished trades and long-expired offers are forgotten after 30 days
+  market.listings = market.listings.filter((l) => !((l.paid || l.expired) && now - (l.boughtAt || l.created) > 30 * 864e5));
+}
+function accountOk(id, key) {
+  if (!validId(id) || !key) return false;
+  const f = file(id);
+  if (!fs.existsSync(f)) return false;
+  try { return JSON.parse(fs.readFileSync(f, 'utf8')).key === hashKey(key); } catch { return false; }
+}
+const pub = (l) => ({ id: l.id, sellerName: l.sellerName, item: l.item, qty: l.qty, price: l.price, created: l.created, sold: !!l.buyer, paid: !!l.paid, expired: !!l.expired });
+
+async function marketApi(req, res, url) {
+  const key = req.headers['x-key'];
+  const parts = url.pathname.split('/').filter(Boolean); // api, market, ...
+  const action = parts[2] || '';
+  const lid = Number(parts[3]);
+  let body = {};
+  if (req.method === 'POST') { try { body = JSON.parse((await readBody(req)) || '{}'); } catch { return send(res, 400, { error: 'bad body' }); } }
+  const me = body.id || url.searchParams.get('id');
+  if (req.method === 'GET' && action === '') {
+    pruneMarket();
+    const list = market.listings.filter((l) => !l.buyer && !l.expired && l.seller !== me).sort((a, b) => b.created - a.created).slice(0, 60).map(pub);
+    return send(res, 200, { listings: list });
+  }
+  if (!accountOk(me, key)) return send(res, 403, { error: 'account' });
+  if (req.method === 'GET' && action === 'mine') {
+    pruneMarket();
+    return send(res, 200, { listings: market.listings.filter((l) => l.seller === me && !l.paid).map(pub) });
+  }
+  if (req.method !== 'POST') return send(res, 405, { error: 'method' });
+  if (action === 'list') {
+    const { item, qty, price, name } = body;
+    if (!/^[a-z]{2,16}$/.test(item || '') || !(qty >= 1 && qty <= 10) || !(price >= 1 && price <= 1e6)) return send(res, 400, { error: 'invalid' });
+    if (market.listings.filter((l) => l.seller === me && !l.paid && !l.expired).length >= 10) return send(res, 429, { error: 'too many' });
+    const l = { id: market.next++, seller: me, sellerName: String(name || 'Stadt').slice(0, 28), item, qty: Math.floor(qty), price: Math.floor(price), created: Date.now(), buyer: null, boughtAt: 0, paid: false };
+    market.listings.push(l);
+    saveMarket();
+    return send(res, 200, { listing: pub(l) });
+  }
+  const l = market.listings.find((x) => x.id === lid);
+  if (!l) return send(res, 404, { error: 'gone' });
+  if (action === 'buy') {
+    if (l.buyer || l.expired) return send(res, 409, { error: 'sold' });
+    if (l.seller === me) return send(res, 400, { error: 'own' });
+    l.buyer = me; l.boughtAt = Date.now();
+    saveMarket();
+    return send(res, 200, { listing: pub(l) });
+  }
+  if (l.seller !== me) return send(res, 403, { error: 'not yours' });
+  if (action === 'collect') {
+    if (!l.buyer || l.paid) return send(res, 409, { error: 'not sold' });
+    l.paid = true;
+    saveMarket();
+    return send(res, 200, { price: l.price });
+  }
+  if (action === 'cancel') {
+    if (l.buyer) return send(res, 409, { error: 'sold' });
+    market.listings = market.listings.filter((x) => x !== l);
+    saveMarket();
+    return send(res, 200, { item: l.item, qty: l.qty });
+  }
+  return send(res, 404, { error: 'unknown' });
+}
+
 async function api(req, res, url) {
-  if (url.pathname === '/api/health') return send(res, 200, { ok: true });
+  if (url.pathname === '/api/health') return send(res, 200, { ok: true, market: true });
+  if (url.pathname.startsWith('/api/market')) return marketApi(req, res, url);
   const m = url.pathname.match(/^\/api\/save\/([^/]+)$/);
   if (!m) return send(res, 404, { error: 'not found' });
   const id = m[1];

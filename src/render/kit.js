@@ -15,9 +15,9 @@ function cached(key, make) {
 
 export const M = {
   color(hex, opts = {}) {
-    const { rough = 0.85, metal = 0, emissive = null, flat = false, opacity = 1 } = opts;
-    return cached(`c${hex}-${rough}-${metal}-${emissive}-${flat}-${opacity}`, () => {
-      const m = new THREE.MeshStandardMaterial({ color: hex, roughness: rough, metalness: metal, flatShading: flat });
+    const { rough = 0.85, metal = 0, emissive = null, flat = false, opacity = 1, double = false } = opts;
+    return cached(`c${hex}-${rough}-${metal}-${emissive}-${flat}-${opacity}-${double}`, () => {
+      const m = new THREE.MeshStandardMaterial({ color: hex, roughness: rough, metalness: metal, flatShading: flat, side: double ? THREE.DoubleSide : THREE.FrontSide });
       if (emissive) { m.emissive = new THREE.Color(emissive); m.emissiveIntensity = 1; }
       if (opacity < 1) { m.transparent = true; m.opacity = opacity; m.depthWrite = false; m.userData.noShadow = true; }
       return m;

@@ -10,10 +10,13 @@ const BACKUP_KEY = 'neustadt.save.backup';
 const ACCOUNT_KEY = 'neustadt.account';
 const SETTINGS_KEY = 'neustadt.settings';
 
-const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-  const r = (Math.random() * 16) | 0;
-  return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-}));
+// Short random tokens without easily confused characters (no 0/o, 1/l/i).
+const ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
+function token(n) {
+  const buf = new Uint32Array(n);
+  crypto.getRandomValues(buf);
+  return Array.from(buf, (v) => ALPHA[v % ALPHA.length]).join('');
+}
 
 function safeGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function safeSet(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; } }
@@ -41,7 +44,7 @@ export function account() {
   let a = null;
   try { a = JSON.parse(safeGet(ACCOUNT_KEY) || 'null'); } catch { a = null; }
   if (!a || !a.id || !a.key) {
-    a = { id: uuid(), key: uuid() };
+    a = { id: token(10), key: token(14) };
     safeSet(ACCOUNT_KEY, JSON.stringify(a));
   }
   return a;
@@ -49,16 +52,14 @@ export function account() {
 
 export function syncCode() {
   const a = account();
-  return btoa(`${a.id}:${a.key}`).replace(/=+$/, '');
+  return `${a.id}${a.key}`.toUpperCase().match(/.{1,4}/g).join('-');
 }
 
 export function useSyncCode(code) {
-  try {
-    const [id, key] = atob(code.trim()).split(':');
-    if (!id || !key || id.length < 8) return false;
-    safeSet(ACCOUNT_KEY, JSON.stringify({ id, key }));
-    return true;
-  } catch { return false; }
+  const raw = code.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (raw.length !== 24) return false;
+  safeSet(ACCOUNT_KEY, JSON.stringify({ id: raw.slice(0, 10), key: raw.slice(10) }));
+  return true;
 }
 
 export class SaveManager {
