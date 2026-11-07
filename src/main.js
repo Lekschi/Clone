@@ -114,6 +114,9 @@ class App {
     game.on('expanded', () => this.hud.toast('Neues Bauland gekauft!', 'good'));
     game.on('sold', (s) => this.hud.toast(`${s.qty}× ${ITEMS[s.item].name} verkauft`, 'good'));
     game.on('wish', () => sfx.notify());
+    game.on('event', (ev) => { if (this.demo) return; sfx.reward(); this.hud.toast(`${ev.name}! ${ev.text}`, 'good'); this.advisor?.tipOnce?.('event', 'Ein <b>Stadtereignis</b>! Solange der Zähler oben läuft, gibt es einen Bonus. Nutze die Zeit gut!'); });
+    game.on('eventEnd', () => { if (!this.demo) this.hud.toast('Das Stadtereignis ist vorbei.', 'info'); });
+    game.on('achievement', (a, tier, r) => { sfx.level(); this.hud.toast(`Erfolg „${a.name}“ – ${['Bronze', 'Silber', 'Gold', 'Platin', 'Diamant'][tier - 1]}! +${r} Kristalle`, 'good'); });
     game.on('served', (b, c) => this.hud.toast(`${c.who} kauft ${c.qty}× ${ITEMS[c.item].name}`, 'good'));
     game.on('fire', (b, covered) => {
       if (this.demo) return;
@@ -199,7 +202,12 @@ class App {
         this.panels.close();
         if (this.build.isOpen()) this.build.close(); else this.build.open();
         break;
-      case 'quests': case 'storage': case 'overview': case 'settings': case 'progress':
+      case 'event': {
+        const ev = this.game.activeEvent();
+        if (ev) this.hud.toast(`${ev.name}: ${ev.text}`, 'info');
+        break;
+      }
+      case 'quests': case 'storage': case 'overview': case 'settings': case 'progress': case 'achievements':
         this.build.close();
         this.panels.open(act);
         break;

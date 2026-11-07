@@ -10,6 +10,9 @@ Echtgeld-Käufe**: Kristalle verdienst du durch Stufenaufstiege, Aufgaben, Tages
 
 ## Spielinhalte
 
+- **Startbildschirm** mit Vorzeige-Stadt, Kamerafahrt, bis zu drei Städten (Spielstände) und
+  Stadtgründung mit Landschaftsvorschau
+
 - **Wohngebiete** mit 8 Ausbaustufen in vier Arten: Wohngebiet, Arbeitersiedlung, Villenviertel und
   Öko-Siedlung. Zufriedene Bewohner (ab 50 %) wünschen sich einen Ausbau; neue Wohngebiete schaltet man
   frei, indem man bestehende Häuser ausbaut (jede zweite Ausbaustufe ein weiteres)
@@ -17,7 +20,12 @@ Echtgeld-Käufe**: Kristalle verdienst du durch Stufenaufstiege, Aufgaben, Tages
 - **Kundschaft** in den Läden kauft produzierte Waren über Marktwert; Ladentheke für Sofortverkauf
 - **Versorgung**: Windrad, Kohle-, Solar-, Gas- und Kernkraftwerk; Wasserturm, Pumpwerk, Wasserwerk;
   Kläranlagen; Mülldeponie, Müllheizkraftwerk, Recyclingzentrum
-- **Dienste** mit Einzugsradius: Feuerwehr, Polizei, Gesundheit. Ungeschützte Häuser können brennen.
+- **Dienste** mit Einzugsradius: Feuerwehr, Polizei, Gesundheit. Ungeschützte Häuser können brennen;
+  bei geschützten rückt ein Löschzug mit Blaulicht und Sirene über das Straßennetz aus.
+- **Lebendige Stadt**: Lieferwagen bringen Waren ins Lager, Polizeistreifen, Ampeln, Straßenlaternen,
+  Bäume, Haltestellen; Bewohner kommentieren ihr Zuhause („Stimmen der Stadt“)
+- **Erfolge** in fünf Medaillenstufen mit Kristall-Belohnung, **Stadtereignisse** (Stadtfest mit
+  Feuerwerk, Einkaufsnacht, Bauboom, Handwerkerwoche) und **Statistik** mit Verlaufsdiagrammen
 - **Industrie**: Fabrik, Großfabrik, Öko-Fabrik mit parallelen Produktionsplätzen (10 Rohstoffe)
 - **Handel**: 8 Läden mit Warteschlange und 40 Waren in Produktionsketten, Marktplatz zum Kaufen und
   Verkaufen, Güterbahnhof mit Lieferaufträgen

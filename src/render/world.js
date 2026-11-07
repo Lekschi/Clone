@@ -828,6 +828,18 @@ export class World {
     this.street.update(dt, this.night);
     this.traffic.update(dt, this.night, this.weather.wet);
     this.agents.update(dt, this.night);
+    // Stadtfest: fireworks over the city centre in the evening
+    if (this.night > 0.35 && this.game.activeEvent?.()?.id === 'fest') {
+      this.fwT = (this.fwT || 0) - dt;
+      if (this.fwT <= 0) {
+        this.fwT = 0.5 + Math.random() * 1.1;
+        const hall = this.game.state.buildings.find((b) => b.type === 'cityhall') || { x: 30, z: 30 };
+        const fx = hall.x + 1 + (Math.random() - 0.5) * 10, fz = hall.z + 1 + (Math.random() - 0.5) * 10;
+        this.particles.firework(fx, 3 + Math.random() * 2.5, fz);
+        const d = Math.hypot(fx - this.view.target.x, fz - this.view.target.z) + this.view.dist * 0.5;
+        sfx.firework(Math.max(0, 0.22 - d * 0.004), Math.max(-0.8, Math.min(0.8, (fx - this.view.target.x) / 12)));
+      }
+    }
     const near = this.view.dist < 40;
     if (near) this.walkers.update(dt);
     for (const m of this.walkers.meshes) m.visible = near && this.weather.wet < 0.7;

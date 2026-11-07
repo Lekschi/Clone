@@ -93,6 +93,24 @@ export class Particles {
     }
   }
 
+  // a firework burst: additive sparks falling under gravity
+  firework(x, y, z) {
+    const cols = [['#ff5a5a', '#ffd0d0'], ['#5ab0ff', '#d6ecff'], ['#ffd34d', '#fff3c4'], ['#7dff8a', '#e0ffe4'], ['#d77dff', '#f3dcff']];
+    const [c1, c2] = cols[Math.floor(Math.random() * cols.length)];
+    const n = 46;
+    for (let i = 0; i < n; i++) {
+      const p = new THREE.Vector3(x, y, z);
+      this.spawn(p, { color: i % 4 ? c1 : c2, life: 1.6, size: 0.12, grow: 0.1, rise: 0, vy: 0, gravity: 0.9, opacity: 1, additive: true, tex: this.drop });
+      const u = this.live[this.live.length - 1]?.userData;
+      if (!u) break;
+      // even directions on a sphere
+      const k = (i + 0.5) / n, phi = Math.acos(1 - 2 * k), th = Math.PI * (1 + Math.sqrt(5)) * i;
+      const sp = 1.6 + Math.random() * 0.3;
+      u.vx = Math.sin(phi) * Math.cos(th) * sp; u.vz = Math.sin(phi) * Math.sin(th) * sp; u.vy = Math.cos(phi) * sp;
+      u.drag = 1.4;
+    }
+  }
+
   setEmitters(list) { this.emitters = list; }
 
   update(dt, night, wind = 1) {
@@ -129,6 +147,7 @@ export class Particles {
         this.pool.push(s);
         continue;
       }
+      if (u.drag) { const f = Math.exp(-u.drag * dt); u.vx *= f; u.vz *= f; u.vy *= f; }
       if (u.gravity) { u.vy -= u.gravity * dt; s.position.y += u.vy * dt; }
       else s.position.y += u.rise * dt * (1 - k * 0.5);
       s.position.x += u.vx * dt;

@@ -112,6 +112,7 @@ export function nowPlaying() { return music?.current || null; }
 export function skipTrack() { if (music) music.next(); }
 
 // ------------------------------------------------------------------ ambience
+let fwNoise = null;
 function noiseBuffer(kind = 'pink', sec = 4) {
   const n = ctx.sampleRate * sec;
   const buf = ctx.createBuffer(2, n, ctx.sampleRate);
@@ -415,4 +416,25 @@ export const sfx = {
   page() { play('page', { vol: 0.45 }); },
   hammer(vol = 0.3, pan = 0) { play(Math.random() < 0.6 ? 'hammer' : 'hammer2', { vol, pan, gap: 0.12, jitter: 0.12 }); },
   clink(vol = 0.25, pan = 0) { play('clink', { vol, pan, gap: 0.2, jitter: 0.15 }); },
+  // distant firework: low thump, then a sparse crackle
+  firework(vol = 0.2, pan = 0) {
+    if (!soundOn || !ctx || vol < 0.01) return;
+    const t = ctx.currentTime;
+    const out = ctx.createGain(); out.gain.value = vol;
+    let node = out;
+    if (ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; out.connect(p); node = p; }
+    node.connect(sfxGain);
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(120, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.35);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    o.connect(g).connect(out); o.start(t); o.stop(t + 0.55);
+    const buf = fwNoise || (fwNoise = noiseBuffer('pink', 2));
+    for (let i = 0; i < 14; i++) {
+      const at = t + 0.12 + Math.random() * 1.1;
+      const src = ctx.createBufferSource(); src.buffer = buf;
+      const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 2500 + Math.random() * 3000;
+      const e = ctx.createGain(); e.gain.setValueAtTime(0.0001, at); e.gain.exponentialRampToValueAtTime(0.35 * Math.random() + 0.1, at + 0.004); e.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
+      src.connect(f).connect(e).connect(out); src.start(at, Math.random()); src.stop(at + 0.06);
+    }
+  },
 };

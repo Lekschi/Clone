@@ -5,6 +5,7 @@ import { BUILDINGS, BUILD_ORDER } from '../data/buildings.js';
 import { UTIL_NAMES } from '../data/buildings.js';
 import { sfx } from '../audio.js';
 import { questProgress } from '../game/quests.js';
+import { achClaimable } from '../game/meta.js';
 import { inClaude as inClaudeHud } from '../save/claude.js';
 
 export class Hud {
@@ -31,6 +32,7 @@ export class Hud {
         <button class="side" data-act="storage">${icon('box')}<span class="lbl stor">0/0</span></button>
         <button class="side" data-act="quests">${icon('list')}<span class="lbl">Aufgaben</span><i class="badge q-badge"></i></button>
         <button class="side" data-act="overview">${icon('stats')}<span class="lbl">Stadt</span></button>
+        <button class="side" data-act="achievements">${icon('trophy')}<span class="lbl">Erfolge</span><i class="badge a-badge"></i></button>
         <div class="sync" title="Speicherstatus"></div>
       </div>
       <div class="hud-bl">
@@ -42,6 +44,7 @@ export class Hud {
         <button class="build-btn" data-act="build"><span class="bb-ic">${icon('home')}</span><span>Bauen</span><i class="badge new-badge"></i></button>
       </div>
       <button class="ticker hidden" data-act="quests"></button>
+      <button class="event-chip hidden" data-act="event"></button>
       <div class="view-bar hidden"></div>
       <div id="toasts"></div>
     </div>`);
@@ -53,6 +56,7 @@ export class Hud {
       app.action(b.dataset.act, b);
     });
     g.on('change', () => this.update());
+    setInterval(() => this.eventChip(), 1000);
     g.on('city', () => this.update());
     g.on('quests', () => this.update());
     g.on('toast', (m, k) => this.toast(m, k));
@@ -96,10 +100,25 @@ export class Hud {
     // utility shortages
     const short = Object.keys(UTIL_NAMES).filter((k) => g.city.demand[k] > g.city.supply[k] && g.city.demand[k] > 0 && (k !== 'sewage' || S.level >= 2) && (k !== 'waste' || S.level >= 2));
     $('.warn-utils', this.el).innerHTML = short.map((k) => `<span class="warn">${icon(k)}</span>`).join('');
+    const ac = achClaimable(g);
+    const ab = $('.a-badge', this.el);
+    ab.textContent = ac || '';
+    ab.style.display = ac ? '' : 'none';
+    this.eventChip();
     const fresh = BUILD_ORDER.filter((id) => BUILDINGS[id].cat !== 'fixed' && BUILDINGS[id].level <= S.level && BUILDINGS[id].level > 1 && !S.seen[`b:${id}`]).length;
     const nb = $('.new-badge', this.el);
     nb.textContent = fresh ? 'NEU' : '';
     nb.style.display = fresh ? '' : 'none';
+  }
+
+  // running city event with countdown
+  eventChip() {
+    const ev = this.app.game.activeEvent();
+    const el = $('.event-chip', this.el);
+    if (!ev) { el.classList.add('hidden'); return; }
+    const left = Math.max(0, Math.ceil((ev.until - Date.now()) / 1000));
+    el.innerHTML = `${icon(ev.icon)}<span><b>${ev.name}</b><em>${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}</em></span>`;
+    el.classList.remove('hidden');
   }
 
   syncStatus(s) {

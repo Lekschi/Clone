@@ -6,6 +6,7 @@ import { questProgress } from '../game/quests.js';
 import { WISH_HAPPY } from '../game/game.js';
 import { isRes } from '../data/buildings.js';
 import { residentVoice, cityVoices, voiceHTML } from '../game/voices.js';
+import { ACHIEVEMENTS, achState, ACH_TIER_NAMES } from '../game/meta.js';
 import { syncCode, useSyncCode, saveSettings, clearLocal } from '../save/save.js';
 import { setSound, setMusic, setAmbience, sfx, TRACKS, MUSIC_LICENSES, nowPlaying, skipTrack } from '../audio.js';
 import { inClaude, downloadsApi } from '../save/claude.js';
@@ -18,6 +19,25 @@ export class Panels {
     this.cur = null;
     app.game.on('change', () => this.refresh());
     setInterval(() => this.refresh(), 1000);
+    // hover crosshair + tooltip for the statistics charts
+    document.addEventListener('pointermove', (e) => {
+      const ch = e.target.closest?.('.chart');
+      document.querySelectorAll('.chart.hover').forEach((x) => { if (x !== ch) x.classList.remove('hover'); });
+      if (!ch) return;
+      const pts = JSON.parse(ch.dataset.pts || '[]');
+      if (!pts.length) return;
+      const r = ch.getBoundingClientRect();
+      const fx = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      const i = Math.round(fx * (pts.length - 1));
+      const [t, label, y] = pts[i];
+      const x = pts.length > 1 ? i / (pts.length - 1) : 0.5;
+      ch.classList.add('hover');
+      const cross = ch.querySelector('.ch-cross'), dot = ch.querySelector('.ch-dot'), tip = ch.querySelector('.ch-tip');
+      cross.style.left = `${x * 100}%`;
+      dot.style.left = `${x * 100}%`; dot.style.top = `${y * 100}%`;
+      tip.innerHTML = `<b>${label}</b><span>${t}</span>`;
+      tip.style.left = `${Math.min(78, Math.max(22, x * 100))}%`;
+    });
   }
 
   get game() { return this.app.game; }
@@ -358,8 +378,69 @@ export class Panels {
     return { night: (w?.night || 0) > 0.6, rain: (w?.weather?.wet || 0) > 0.4 };
   }
 
-  r_overview() {
-    return { title: 'Stadtübersicht', sub: esc(this.game.state.name), icon: icon('stats'), color: '#4d9de6', body: this.cityStats() };
+  r_overview(c) {
+    const tabs = `<div class="tabs"><button class="tab ${c.tab === 0 ? 'on' : ''}" data-act="tab" data-arg="0">Übersicht</button><button class="tab ${c.tab === 1 ? 'on' : ''}" data-act="tab" data-arg="1">Statistik</button></div>`;
+    return { title: 'Stadtübersicht', sub: esc(this.game.state.name), icon: icon('stats'), color: '#4d9de6', body: tabs + (c.tab === 1 ? this.historyCharts() : this.cityStats()) };
+  }
+
+  // small multiples: one single-series chart per measure, each on its own axis
+  historyCharts() {
+    const S = this.game.state;
+    const hist = [...(S.history || [])];
+    hist.push({ t: Date.now(), pop: this.game.city.pop, coins: Math.round(S.coins), happy: this.game.city.happy, tax: Math.round(this.game.city.taxRate) });
+    if (hist.length < 3) return '<div class="note">Die Statistik sammelt alle zwei Minuten Daten. Schau später wieder vorbei!</div>';
+    const clock = (t) => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    const day = (t) => new Date(t).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+    const span = hist[hist.length - 1].t - hist[0].t;
+    const when = (t) => (span > 20 * 3600e3 ? `${day(t)} ${clock(t)}` : clock(t));
+    const chart = (key, title, fmt, fixedMax) => {
+      const vals = hist.map((p) => p[key] || 0);
+      const lo = fixedMax ? 0 : Math.min(...vals), hi = fixedMax || Math.max(...vals);
+      const pad = (hi - lo) * 0.1 || Math.max(1, hi * 0.1);
+      const y0 = fixedMax ? 0 : Math.max(0, lo - pad), y1 = fixedMax || hi + pad;
+      const W = 300, H = 96;
+      const xy = vals.map((v, i) => [(i / (vals.length - 1)) * W, H - ((v - y0) / (y1 - y0)) * H]);
+      const line = xy.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join('');
+      const area = `${line}L${W},${H}L0,${H}Z`;
+      const pts = hist.map((p, i) => [when(p.t), fmt(vals[i]), xy[i][1] / H]);
+      const grid = [0.25, 0.5, 0.75].map((f) => `<line x1="0" x2="${W}" y1="${f * H}" y2="${f * H}"/>`).join('');
+      const delta = vals[vals.length - 1] - vals[0];
+      return `<div class="chart-card">
+        <div class="cc-head"><span>${title}</span><b>${fmt(vals[vals.length - 1])}</b><em class="${delta > 0 ? 'up' : delta < 0 ? 'down' : ''}">${delta > 0 ? '▲' : delta < 0 ? '▼' : '–'} ${fmt(Math.abs(delta))}</em></div>
+        <div class="chart" data-pts='${JSON.stringify(pts).replace(/'/g, '&#39;')}'>
+          <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><g class="ch-grid">${grid}</g><path class="ch-area" d="${area}"/><path class="ch-line" d="${line}"/></svg>
+          <i class="ch-cross"></i><i class="ch-dot"></i><div class="ch-tip"></div>
+        </div>
+        <div class="cc-axis"><span>${when(hist[0].t)}</span><span>Höchstwert ${fmt(Math.max(...vals))}</span><span>jetzt</span></div>
+      </div>`;
+    };
+    return `<div class="charts">
+      ${chart('pop', 'Einwohner', (v) => num(Math.round(v)))}
+      ${chart('happy', 'Zufriedenheit', (v) => `${Math.round(v)} %`, 100)}
+      ${chart('tax', 'Steuern pro Minute', (v) => num(Math.round(v)))}
+      ${chart('coins', 'Münzen', (v) => num(Math.round(v)))}
+    </div>
+    <p class="muted small">Alle zwei Minuten ein Messpunkt, bis zu 12 Stunden Spielzeit.</p>`;
+  }
+
+  // -------------------------------------------------------------- achievements
+  r_achievements() {
+    const g = this.game;
+    const order = (a) => { const st = achState(g, a); return st.ready ? 0 : st.max ? 2 : 1; };
+    const rows = [...ACHIEVEMENTS].sort((a, b) => order(a) - order(b)).map((a) => {
+      const st = achState(g, a);
+      const medals = a.tiers.map((_, i) => `<i class="medal t${i} ${i < st.done ? 'got' : ''}" title="${ACH_TIER_NAMES[i]}"></i>`).join('');
+      const p = st.max ? 1 : Math.min(1, st.v / st.target);
+      return `<div class="card ach ${st.ready ? 'ready' : ''} ${st.max ? 'max' : ''}">
+        <div class="ach-ic">${icon('trophy')}</div>
+        <div class="q-text"><b>${a.name}</b><span class="muted small">${st.max ? 'Alle Stufen erreicht!' : a.desc.replace('{n}', num(st.target))}</span>
+          ${st.max ? '' : `<div class="bar"><i style="width:${p * 100}%"></i></div><span class="muted small">${num(Math.min(st.v, st.target))} / ${num(st.target)}</span>`}
+          <div class="medals">${medals}</div></div>
+        ${st.max ? '' : `<button class="btn ${st.ready ? 'primary' : 'ghost'} small" data-act="achClaim" data-arg="${a.id}" ${st.ready ? '' : 'disabled'}>${crystals(st.reward)}</button>`}
+      </div>`;
+    });
+    const total = ACHIEVEMENTS.reduce((n, a) => n + (g.state.ach?.[a.id] || 0), 0);
+    return { title: 'Erfolge', sub: `${total} von ${ACHIEVEMENTS.length * 5} Medaillen`, icon: icon('trophy'), color: '#d9a21b', body: `<div class="quests achs">${rows.join('')}</div>` };
   }
 
   // -------------------------------------------------------------- market
@@ -649,6 +730,7 @@ export class Panels {
       case 'skipCargo': g.skipCargo(); break;
       case 'buyLand': if (g.expand(c.arg)) { sfx.level(); this.close(); return; } break;
       case 'claim': if (g.claimQuest(Number(arg))) sfx.reward(); break;
+      case 'achClaim': g.claimAchievement(arg); break;
       case 'set': {
         const [k, v] = arg.split(':');
         app.settings[k] = v === 'true' ? true : v === 'false' ? false : v;

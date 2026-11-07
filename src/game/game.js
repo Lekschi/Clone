@@ -1,4 +1,5 @@
 // Core game model: state, rules, economy and city simulation. No rendering in here.
+import { ACHIEVEMENTS, achState, EVENTS, EVENT_MIN_LEVEL, EVENT_DURATION, EVENT_GAP, HISTORY_EVERY, HISTORY_MAX } from './meta.js';
 import { ITEMS, RAW_IDS, GOOD_IDS, STORAGE_PARTS, EXPAND_PARTS, SHOPS } from '../data/items.js';
 import { BUILDINGS, maxCount, buildCost, ROAD_COST, isRes, RES_TYPES } from '../data/buildings.js';
 import {
@@ -75,6 +76,9 @@ export class Game extends Emitter {
     s.stats ||= { produced: {}, crafted: {}, upgrades: 0, sold: 0, cargoWagons: 0, expansions: 0, taxCollected: 0, popRecord: 0 };
     s.seen ||= {};
     for (const k of ['produced', 'crafted']) s.stats[k] ||= {};
+    s.ach ||= {};
+    s.history ||= [];
+    s.event ||= { id: null, until: 0, next: Date.now() + EVENT_GAP[0] };
   }
 
   // ---------------------------------------------------------------- grid & placement
@@ -366,7 +370,7 @@ export class Game extends Emitter {
     if (it.level > this.state.level) return this.fail(`Ab Stufe ${it.level}`);
     if (b.slots.length >= this.factorySlots(b)) return this.fail('Alle Plätze belegt');
     const now = Date.now();
-    b.slots.push({ item, start: now, end: now + it.time * 1000 });
+    b.slots.push({ item, start: now, end: now + it.time * 1000 * this.eventMul('factory') });
     this.emit('production', b);
     this.emit('change');
     return true;
@@ -427,7 +431,7 @@ export class Game extends Emitter {
     const now = Date.now();
     const last = b.queue.length ? b.queue[b.queue.length - 1].end : now;
     const start = Math.max(now, last);
-    b.queue.push({ item, start, end: start + it.time * 1000 });
+    b.queue.push({ item, start, end: start + it.time * 1000 * this.eventMul('shop') });
     this.emit('production', b);
     this.emit('change');
     return true;
@@ -914,7 +918,7 @@ export class Game extends Emitter {
     const now = Date.now();
     // taxes
     const cap = this.taxCap();
-    if (S.taxes.acc < cap) S.taxes.acc = Math.min(cap, S.taxes.acc + (this.city.taxRate / 60) * dtSec);
+    if (S.taxes.acc < cap) S.taxes.acc = Math.min(cap, S.taxes.acc + (this.city.taxRate * this.eventMul('tax') / 60) * dtSec);
     // market restock
     for (let i = 0; i < S.market.offers.length; i++) {
       const o = S.market.offers[i];
@@ -925,7 +929,61 @@ export class Game extends Emitter {
     this.fireTick(dtSec);
     this.wishTick(now);
     this.shopCustomersTick(now);
+    this.eventTick(now);
+    this.historyTick(now);
     S.updated = now;
+  }
+
+  // ---------------------------------------------------------------- city events
+  eventMul(kind) {
+    const e = this.state.event;
+    if (!e?.id || e.until <= Date.now()) return 1;
+    return EVENTS[e.id]?.mul[kind] ?? 1;
+  }
+
+  activeEvent() {
+    const e = this.state.event;
+    return e?.id && e.until > Date.now() ? { ...EVENTS[e.id], id: e.id, until: e.until } : null;
+  }
+
+  eventTick(now) {
+    const S = this.state;
+    const e = S.event;
+    if (e.id && e.until <= now) { e.id = null; e.next = now + EVENT_GAP[0] + Math.random() * (EVENT_GAP[1] - EVENT_GAP[0]); this.emit('eventEnd'); this.emit('change'); }
+    if (e.id || S.level < EVENT_MIN_LEVEL || e.next > now || !S.tutorial?.done) return;
+    this.startEvent(null, now);
+  }
+
+  startEvent(id, now = Date.now()) {
+    const S = this.state;
+    const ids = Object.keys(EVENTS).filter((k) => k !== S.event.last);
+    id ||= ids[Math.floor(Math.random() * ids.length)];
+    S.event = { id, until: now + EVENT_DURATION, next: 0, last: id };
+    S.stats.events = (S.stats.events || 0) + 1;
+    this.emit('event', EVENTS[id], id);
+    this.emit('change');
+  }
+
+  // ---------------------------------------------------------------- statistics history
+  historyTick(now) {
+    const S = this.state;
+    const last = S.history[S.history.length - 1];
+    if (last && now - last.t < HISTORY_EVERY) return;
+    S.history.push({ t: now, pop: this.city.pop, coins: Math.round(S.coins), happy: this.city.happy, tax: Math.round(this.city.taxRate) });
+    if (S.history.length > HISTORY_MAX) S.history.splice(0, S.history.length - HISTORY_MAX);
+  }
+
+  // ---------------------------------------------------------------- achievements
+  claimAchievement(id) {
+    const a = ACHIEVEMENTS.find((x) => x.id === id);
+    if (!a) return false;
+    const st = achState(this, a);
+    if (!st.ready) return this.fail('Noch nicht erreicht');
+    this.state.ach[id] = st.done + 1;
+    this.state.crystals += st.reward;
+    this.emit('achievement', a, st.done + 1, st.reward);
+    this.emit('change');
+    return true;
   }
 
   // ---------------------------------------------------------------- shop customers
@@ -949,10 +1007,10 @@ export class Game extends Emitter {
       const pool = known.length && Math.random() < 0.7 ? known : items;
       const item = pool[Math.floor(Math.random() * pool.length)];
       const qty = 1 + Math.floor(Math.random() * (ITEMS[item].value > 400 ? 1 : 3));
-      const pay = Math.round(ITEMS[item].value * qty * (1.25 + Math.random() * 0.35) / 5) * 5;
+      const pay = Math.round(ITEMS[item].value * qty * (1.25 + Math.random() * 0.35) * this.eventMul('pay') / 5) * 5;
       this.state.custSeq = (this.state.custSeq || 0) + 1;
       b.customers.push({ id: this.state.custSeq, who: CUSTOMERS[Math.floor(Math.random() * CUSTOMERS.length)], item, qty, pay, xp: Math.round(ITEMS[item].xp * qty * 1.6), leaveAt: now + (12 + Math.random() * 12) * 60000 });
-      b.nextCustomer = now + (60 + Math.random() * 120) * 1000;
+      b.nextCustomer = now + (60 + Math.random() * 120) * 1000 / this.eventMul('customers');
       changed = true;
     }
     if (changed) this.emit('change');

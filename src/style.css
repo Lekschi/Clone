@@ -513,3 +513,48 @@ button.card:active:not(:disabled) { transform: scale(.97); }
 .voice.meh .voice-body { background: #fffaf0; }
 .voices .voice { cursor: pointer; transition: transform .15s; }
 .voices .voice:hover { transform: translateX(3px); }
+
+/* city event chip */
+.event-chip { position: absolute; top: calc(58px + var(--sat, 0px)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border: 0; border-radius: 999px; background: linear-gradient(135deg, #ff8a4c, #f25c8a); color: #fff; font: inherit; box-shadow: 0 4px 14px rgba(242, 92, 138, .35); cursor: pointer; animation: evpulse 2.4s ease-in-out infinite; pointer-events: auto; }
+.event-chip svg { width: 24px; height: 24px; background: #fff; border-radius: 50%; padding: 3px; }
+.event-chip span { display: flex; flex-direction: column; line-height: 1.1; text-align: left; }
+.event-chip b { font-size: 13px; }
+.event-chip em { font-style: normal; font-size: 11px; opacity: .9; font-variant-numeric: tabular-nums; }
+.event-chip.hidden { display: none; }
+@keyframes evpulse { 50% { box-shadow: 0 4px 22px rgba(242, 92, 138, .6); } }
+
+@media (max-width: 700px) { .event-chip { top: calc(116px + var(--sat, 0px)); } }
+#hud.moding .event-chip { opacity: 0; pointer-events: none; }
+
+/* achievements */
+.ach { flex-direction: row; align-items: center; text-align: left; gap: 12px; padding: 12px 14px; }
+.ach .q-text { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ach.ready { box-shadow: 0 0 0 2px #f2c230 inset; background: #fffbea; }
+.ach .ach-ic { flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: #fff6dc; }
+.ach .ach-ic svg { width: 30px; height: 30px; }
+.ach.ready .ach-ic { background: #ffe9a8; animation: evpulse 2s infinite; }
+.ach.max { opacity: .8; }
+.medals { display: flex; gap: 4px; margin-top: 5px; }
+.medal { width: 14px; height: 14px; border-radius: 50%; background: #e3e7ec; box-shadow: inset 0 -2px 0 rgba(0,0,0,.08); }
+.medal.got.t0 { background: #cd8a4a; } .medal.got.t1 { background: #b9c3cc; } .medal.got.t2 { background: #f2c230; }
+.medal.got.t3 { background: #8fd3e8; } .medal.got.t4 { background: linear-gradient(135deg, #b8f0ff, #6fc4ff 50%, #e0b8ff); }
+
+/* statistics charts */
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 10px 0; }
+.chart-card { background: #fff; border-radius: 14px; padding: 10px 12px 8px; box-shadow: 0 1px 0 rgba(0,0,0,.05), 0 3px 10px rgba(30,50,80,.06); }
+.cc-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.cc-head span { font-size: 12px; font-weight: 700; color: #5b6875; flex: 1; }
+.cc-head b { font-size: 17px; color: #1f2a35; font-variant-numeric: tabular-nums; }
+.cc-head em { font-style: normal; font-size: 11px; color: #7c8894; font-variant-numeric: tabular-nums; }
+.chart { position: relative; height: 96px; touch-action: none; }
+.chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.ch-grid line { stroke: #e9edf1; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.ch-area { fill: rgba(59, 130, 214, .12); }
+.ch-line { fill: none; stroke: #3b82d6; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+.ch-cross, .ch-dot, .ch-tip { position: absolute; opacity: 0; pointer-events: none; transition: opacity .12s; }
+.ch-cross { top: 0; bottom: 0; width: 1px; background: #9aa6b2; }
+.ch-dot { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: #3b82d6; box-shadow: 0 0 0 2px #fff; }
+.ch-tip { top: 2px; transform: translateX(-50%); background: #1f2a35; color: #fff; border-radius: 8px; padding: 4px 8px; font-size: 11px; white-space: nowrap; display: flex; gap: 6px; }
+.ch-tip span { color: #c5ced8; }
+.chart.hover .ch-cross, .chart.hover .ch-dot, .chart.hover .ch-tip { opacity: 1; }
+.cc-axis { display: flex; justify-content: space-between; font-size: 10.5px; color: #8b96a1; margin-top: 4px; font-variant-numeric: tabular-nums; }
