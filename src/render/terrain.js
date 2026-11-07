@@ -24,6 +24,7 @@ function fbm(x, z, seed) {
   return s;
 }
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+void sandTexture;
 
 export class Terrain {
   constructor(W, H, seed, highwayZ) {
@@ -61,6 +62,7 @@ export class Terrain {
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
+    const sandy = new Float32Array(pos.count);
     const uv = geo.attributes.uv;
     const cGrass = new THREE.Color('#ffffff');
     const cDry = new THREE.Color('#d9d2a6');
@@ -75,7 +77,8 @@ export class Terrain {
       const h = this.height(x, z);
       pos.setXYZ(i, x, h, z);
       uv.setXY(i, x / 3, z / 3);
-      if (h < 0.06 && z > this.H + 1) col.copy(cSand);
+      sandy[i] = z > this.H + 1 ? smooth(0.12, -0.02, h) : 0;
+      if (h < 0.06 && z > this.H + 1) col.copy(cGrass);
       else if (h > 9) col.copy(cRock).lerp(cSnow, smooth(11, 14, h));
       else if (h > 4) col.copy(cDark).lerp(cRock, smooth(4, 9, h));
       else col.copy(cGrass).lerp(cDry, smooth(1.5, 4, h) * 0.5).lerp(cDark, smooth(0.5, 3, h) * 0.6);
@@ -86,9 +89,24 @@ export class Terrain {
       colors[i * 3] = col.r * (k + m * 0.08); colors[i * 3 + 1] = col.g * k; colors[i * 3 + 2] = col.b * (k - m * 0.1);
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setAttribute('sandy', new THREE.BufferAttribute(sandy, 1));
     geo.computeVertexNormals();
     const mat = new THREE.MeshStandardMaterial({ map: grassTexture(), vertexColors: true, roughness: 0.95, normalMap: groundNormal('grass'), normalScale: new THREE.Vector2(0.9, 0.9) });
     this.landMat = mat;
+    // blend a sandy beach along the coast, wet and darker right at the waterline
+    mat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float sandy;\nvarying float vSandy;\nvarying float vH;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSandy = sandy;\nvH = position.y;');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying float vSandy;\nvarying float vH;')
+        .replace('#include <map_fragment>', `#include <map_fragment>
+          float grain = dot(texture2D(map, vMapUv * 3.7).rgb, vec3(0.333));
+          vec3 sand = mix(vec3(0.55, 0.47, 0.32), vec3(0.78, 0.69, 0.5), clamp(grain * 1.6, 0.0, 1.0));
+          sand = mix(sand * 0.72, sand, smoothstep(-0.13, 0.0, vH));
+          diffuseColor.rgb = mix(diffuseColor.rgb, sand, vSandy);`);
+    };
+    mat.customProgramCacheKey = () => 'land-beach';
     const land = new THREE.Mesh(geo, mat);
     land.receiveShadow = true;
     land.name = 'land';

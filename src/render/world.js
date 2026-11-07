@@ -193,6 +193,14 @@ export class World {
       v.target.y + Math.sin(pitch) * v.dist,
       v.target.z + Math.cos(v.yaw) * cp * v.dist,
     );
+    // never dip into a building: stay above whatever stands under the camera
+    const id = this.game.at(Math.floor(this.camera.position.x), Math.floor(this.camera.position.z));
+    const o = id > 0 ? this.objs.get(id) : null;
+    const minY = (o ? (o.obj.userData.height || 0) : 0) + 0.5;
+    this.camLift = Math.max(this.camLift || 0, minY - this.camera.position.y);
+    this.camLift *= Math.exp(-dt * 1.5);
+    if (this.camera.position.y < minY) this.camLift = Math.max(this.camLift, minY - this.camera.position.y);
+    this.camera.position.y += Math.max(0, this.camLift);
     this.camera.lookAt(v.target);
   }
 
@@ -317,7 +325,9 @@ export class World {
     const C = 8, CW = g.W / C;
     const shade = new THREE.MeshBasicMaterial({ color: '#0d1a12', transparent: true, opacity: 0.28, depthWrite: false });
     const line = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.55, depthWrite: false });
-    const sale = new THREE.MeshBasicMaterial({ color: '#ffd84a', transparent: true, opacity: 0.1, depthWrite: false });
+    const sale = new THREE.MeshBasicMaterial({ color: '#ffd84a', transparent: true, opacity: 0.06, depthWrite: false });
+    for (const m of [line, sale]) m.userData.base = m.color.clone();
+    this.lockMats = [line, sale];
     const planes = [];
     for (let ci = 0; ci < CW * CW; ci++) {
       if (g.unlocked.has(ci)) continue;
@@ -795,13 +805,17 @@ export class World {
     this.clouds.castShadows(day > 0.5);
     this.skySys.update(this.camera, C.skySun, this.night, cover);
     // lights of the city
-    const lit = smooth(0.32, 0.8, this.night) + cover * 0.25 * day;
+    const lit = smooth(0.45, 0.85, this.night) + cover * 0.2 * day;
     for (const m of nightMaterials) {
-      if (m.userData.sign) m.emissiveIntensity = 0.15 + lit * 1.3;
-      else if (m.userData.glow) m.emissiveIntensity = 0.25 + lit * 3.5;
-      else m.emissiveIntensity = Math.min(1, lit) * 1.7;
+      if (m.userData.sign) m.emissiveIntensity = 0.15 + lit * 1.0;
+      else if (m.userData.glow) m.emissiveIntensity = 0.25 + lit * 2.4;
+      else m.emissiveIntensity = Math.min(1, lit) * 1.05;
     }
     if (this.poolMat) this.poolMat.opacity = smooth(0.4, 0.85, this.night) * 0.75;
+    // unlit overlays follow the light level
+    const lv = Math.max(0.15, day * (1 - cover * 0.4));
+    for (const m of this.lockMats || []) m.color.copy(m.userData.base).multiplyScalar(lv);
+    this.grid.material.color.setScalar(Math.max(0.35, lv));
     // wet streets after rain
     if (Math.abs((this._wet ?? -1) - wet) > 0.01) {
       this._wet = wet;

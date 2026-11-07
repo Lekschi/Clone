@@ -22,8 +22,12 @@ Echtgeld-Käufe**: Kristalle verdienst du durch Stufenaufstiege, Aufgaben, Tages
 - **Lager** mit Ausbau über Bauteile, **Landerweiterung** in 8×8-Grundstücken
 - **Aufgaben**, Stufen bis 40, Tagesbonus, Steuern im Rathaus, Zufriedenheit, Abgase, Ansichten für
   Abdeckung und Versorgung
-- Tag-und-Nacht-Wechsel mit beleuchteten Fenstern und Straßenlaternen, Verkehr, Rauch, Wolken mit
-  Schatten, Küste, Wälder und Berge
+- Realistische Darstellung: Umgebungsverdeckung (AO), Bloom, physikalischer Himmel mit Sonnenauf- und
+  -untergang, Sternen und Mond, spiegelnde Glasfassaden mit Oberflächenrelief, animiertes Wasser,
+  Wetter (Wolken, Regen, nasse Straßen), im Wind wiegende Bäume
+- Leben in der Stadt: Autos, Lieferwagen und Busse mit Scheinwerfern und Bremsverhalten, Fußgänger,
+  Vogelschwärme, Schiffe, Flugzeuge mit Kondensstreifen, Springbrunnen, Baustellen mit Gerüst und Kran
+- Grafikstufen Ultra / Hoch / Schnell; Kamera mit Schwung, Neigung (zwei Finger hoch/runter)
 - Gebäude verschieben, abreißen, drehen; Touch-Steuerung (ziehen, zoomen, mit zwei Fingern drehen)
 
 ## Speichern

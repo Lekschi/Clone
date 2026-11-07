@@ -93,9 +93,9 @@ export class Post {
   render(dt, night, weather = 0) {
     if (!this.composer) { this.renderer.render(this.scene, this.camera); return; }
     // brighter, wider glow at night for windows, lamps and headlights
-    this.bloom.strength = 0.22 + night * 0.75;
-    this.bloom.threshold = 0.95 - night * 0.35;
-    this.bloom.radius = 0.5 + night * 0.25;
+    this.bloom.strength = 0.12 + night * 0.38;
+    this.bloom.threshold = 1.0 - night * 0.22;
+    this.bloom.radius = 0.32 + night * 0.18;
     this.grade.uniforms.uNight.value = night;
     this.grade.uniforms.uSat.value = 1.02 - weather * 0.25 - night * 0.08;
     if (this.ao) this.ao.configuration.intensity = 3.2 - night * 1.4;
