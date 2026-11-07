@@ -15,8 +15,12 @@ export async function claudeBackend() {
   return backend;
 }
 
-export function saveDoc(b) {
-  return b.db.doc(`data/users/${b.uid}/save`);
+export function saveDoc(b, slot = 'main') {
+  return b.db.doc(`data/users/${b.uid}/${slot === 'main' ? 'save' : `save-${slot}`}`);
+}
+
+export function slotsDoc(b) {
+  return b.db.doc(`data/users/${b.uid}/slots`);
 }
 
 export async function downloadsApi() {

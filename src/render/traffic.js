@@ -227,8 +227,20 @@ export class Traffic {
         let target = c.max * speedK;
         if (c.junction && c.t > 0.05 && c.t < 0.6) target *= 0.6;
         if (this.blocked(c)) target = 0;
+        // red light ahead: stop at the stop line of this cell
+        let hold = false;
+        if (this.street && c.t > 0.45) {
+          const d = DIRS[c.dout];
+          const jx = c.x + d[0], jz = c.z + d[1];
+          if (this.street.isJunction(jx, jz)) {
+            const ph = this.street.phase(jx, jz);
+            const axis = c.dout % 2 === 0 ? 'ns' : 'ew';
+            if (ph !== axis && !(this.street.isJunction(c.x, c.z))) { target = 0; hold = true; }
+          }
+        }
         c.v += Math.max(-dt * 4, Math.min(dt * 1.6, target - c.v));
         c.t += dt * Math.max(0, c.v);
+        if (hold && c.t > 0.82) { c.t = 0.82; c.v = 0; }
       } else c.t += dt * c.max;
       while (c.t >= 1 && !c.dead) {
         c.t -= 1;

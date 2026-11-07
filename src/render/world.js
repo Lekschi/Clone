@@ -17,6 +17,7 @@ import { TIME, WIND } from './shared.js';
 import { sfx } from '../audio.js';
 import { Builder, forEachMaterial } from './kit.js';
 import { SEA_LEVEL } from './terrain.js';
+import { StreetFurniture } from './street.js';
 
 const HIGHWAY_Z = 30;
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -100,7 +101,9 @@ export class World {
 
     this.objs = new Map();
     this.anims = [];
+    this.street = new StreetFurniture(scene, game);
     this.traffic = new Traffic(scene, game, HIGHWAY_Z);
+    this.traffic.street = this.street;
     this.walkers = new Traffic(scene, game, HIGHWAY_Z, { walkers: true });
     this.particles = new Particles(scene);
     this.clouds = new Clouds(scene, game.W / 2, game.H / 2);
@@ -174,8 +177,18 @@ export class World {
       this.panVel.multiplyScalar(Math.exp(-dt * 4.5));
     }
     this.panAcc.set(0, 0);
+    if (this.cinematic) {
+      // title screen: a slow glide around the city with the horizon in view
+      this.cineT = (this.cineT || 0) + dt;
+      const t = this.cineT;
+      const cx = this.game.W / 2 - 4, cz = this.game.H / 2 - 2;
+      c.target.set(cx + Math.sin(t * 0.045) * 7, 0, cz + Math.cos(t * 0.06) * 5);
+      c.dist = 27 + Math.sin(t * 0.08) * 5;
+      c.yaw = -0.9 + t * 0.035;
+      c.tilt = -0.66;
+    }
     c.dist = Math.max(4.5, Math.min(80, c.dist));
-    c.tilt = Math.max(-0.5, Math.min(0.25, c.tilt || 0));
+    c.tilt = Math.max(this.cinematic ? -0.7 : -0.5, Math.min(0.25, c.tilt || 0));
     c.pitch = Math.max(0.14, 0.62 + smooth(5, 50, c.dist) * 0.42 + c.tilt);
     c.target.x = Math.max(-6, Math.min(this.game.W + 6, c.target.x));
     c.target.z = Math.max(-6, Math.min(this.game.H + 8, c.target.z));
@@ -263,61 +276,9 @@ export class World {
       im.computeBoundingSphere();
       this.roadGroup.add(im);
     }
-    this.buildLamps(groups);
+    this.street.rebuild(groups);
     this.traffic.setRoads();
     this.walkers?.setRoads();
-  }
-
-  // Street lights along straight road segments; their heads glow at night.
-  buildLamps(groups) {
-    if (!this.lampGeo) {
-      const pole = new THREE.CylinderGeometry(0.008, 0.011, 0.26, 5);
-      pole.translate(0, 0.13, 0);
-      const arm = new THREE.BoxGeometry(0.09, 0.008, 0.01);
-      arm.translate(0.04, 0.255, 0);
-      this.lampGeo = mergePlanesAny([pole, arm]);
-      this.lampHeadGeo = new THREE.BoxGeometry(0.05, 0.012, 0.028);
-      this.lampHeadGeo.translate(0.075, 0.248, 0);
-      this.lampMat = new THREE.MeshStandardMaterial({ color: '#4a5058', metalness: 0.5, roughness: 0.5 });
-      this.lampHeadMat = M.glow('#ffe2a0');
-      // pool of warm light on the pavement under each lamp (additive, only at night)
-      const pc = document.createElement('canvas');
-      pc.width = pc.height = 64;
-      const pctx = pc.getContext('2d');
-      const pg = pctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-      pg.addColorStop(0, 'rgba(255,214,150,0.9)'); pg.addColorStop(0.45, 'rgba(255,200,130,0.35)'); pg.addColorStop(1, 'rgba(255,190,120,0)');
-      pctx.fillStyle = pg; pctx.fillRect(0, 0, 64, 64);
-      const pt = new THREE.CanvasTexture(pc);
-      pt.colorSpace = THREE.SRGBColorSpace;
-      this.poolGeo = new THREE.PlaneGeometry(0.62, 0.62);
-      this.poolGeo.rotateX(-Math.PI / 2);
-      this.poolGeo.translate(0.09, 0.022, 0);
-      this.poolMat = new THREE.MeshBasicMaterial({ map: pt, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0, polygonOffset: true, polygonOffsetFactor: -4 });
-    }
-    const spots = [];
-    for (const [mask, cells] of groups) {
-      const ns = mask === 5, ew = mask === 10;
-      if (!ns && !ew) continue;
-      for (const [x, z] of cells) {
-        if ((x + z) % 3 !== 0) continue;
-        const side = (x + z) % 2 ? 1 : -1;
-        if (ns) spots.push([x + 0.5 + side * 0.41, z + 0.5, side > 0 ? Math.PI : 0]);
-        else spots.push([x + 0.5, z + 0.5 + side * 0.41, side > 0 ? Math.PI / 2 : -Math.PI / 2]);
-      }
-    }
-    if (this.lamps) for (const m of this.lamps) { this.roadGroup.remove(m); m.dispose(); }
-    this.lamps = [];
-    if (!spots.length) return;
-    const q = new THREE.Quaternion(), m4 = new THREE.Matrix4(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
-    for (const [geo, mat, shadow] of [[this.lampGeo, this.lampMat, true], [this.lampHeadGeo, this.lampHeadMat, false], [this.poolGeo, this.poolMat, false]]) {
-      const im = new THREE.InstancedMesh(geo, mat, spots.length);
-      spots.forEach(([x, z, r], i) => { q.setFromAxisAngle(up, r); m4.compose(new THREE.Vector3(x, 0.012, z), q, one); im.setMatrixAt(i, m4); });
-      im.castShadow = shadow;
-      im.instanceMatrix.needsUpdate = true;
-      im.computeBoundingSphere();
-      this.roadGroup.add(im);
-      this.lamps.push(im);
-    }
   }
 
   rebuildLocks() {
@@ -823,7 +784,7 @@ export class World {
       else if (m.userData.glow) m.emissiveIntensity = 0.25 + lit * 2.4;
       else m.emissiveIntensity = Math.min(1, lit) * 1.05;
     }
-    if (this.poolMat) this.poolMat.opacity = smooth(0.4, 0.85, this.night) * 0.75;
+    this.street.update(0, this.night);
     // unlit overlays follow the light level
     const lv = Math.max(0.15, day * (1 - cover * 0.4));
     for (const m of this.lockMats || []) m.color.copy(m.userData.base).multiplyScalar(lv);
@@ -855,6 +816,7 @@ export class World {
     this.stepAnims(dt);
     for (const { obj } of this.objs.values()) for (const r of obj.userData.rotors) r.rotation.z += dt * r.userData.spin.speed * WIND.value;
     if (this.selRing) this.selRing.material.opacity = 0.35 + Math.sin(performance.now() / 200) * 0.2;
+    this.street.update(dt, this.night);
     this.traffic.update(dt, this.night, this.weather.wet);
     const near = this.view.dist < 40;
     if (near) this.walkers.update(dt);

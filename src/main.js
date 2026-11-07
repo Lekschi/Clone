@@ -10,8 +10,10 @@ import { BuildMenu, ModeBar } from './ui/build.js';
 import { Bubbles } from './ui/bubbles.js';
 import { Input } from './ui/input.js';
 import { Advisor } from './ui/advisor.js';
+import { Launcher } from './ui/launcher.js';
+import { demoState } from './game/demo.js';
 import { h, num, icon, esc } from './ui/dom.js';
-import { SaveManager, loadSettings, account } from './save/save.js';
+import { SaveManager, loadSettings, account, activeSlot, writeLocalState, touchSlot, serverId } from './save/save.js';
 import { GlobalMarket } from './save/net.js';
 import { inClaude, claudeBackend, saveDoc } from './save/claude.js';
 import { setSound, setMusic, setAmbience, setMusicMood, updateAmbience, sfx } from './audio.js';
@@ -35,16 +37,29 @@ class App {
     const res = await SaveManager.resolveStart(this.settings);
     let state = res.state;
     const fresh = !state;
-    if (!state) state = newState();
+    let skip = false;
+    try { skip = !!sessionStorage.getItem('neustadt.skipTitle'); sessionStorage.removeItem('neustadt.skipTitle'); } catch { /* storage blocked */ }
+    // first visit: a bustling showcase city behind the title screen (never saved)
+    this.demo = fresh && !skip;
+    if (!state) state = this.demo ? demoState() : newState();
     this.start(state, res.server);
+    if (this.demo) this.save.disabled = true;
     splash.classList.add('out');
     setTimeout(() => splash.remove(), 600);
+    if (skip) this.enterGame();
+    else this.launcher.show();
+  }
+
+  // Leaves the title screen: tutorial for new players, otherwise greeting and daily bonus.
+  enterGame() {
+    const hall = this.game.findUnique('cityhall');
+    if (hall) this.world.focus(hall.x + 2, hall.z + 1, 22);
+    this.world.cam.tilt = 0;
     if (!this.game.state.tutorial?.done) {
       this.advisor.onFinish = () => this.daily();
       this.advisor.start();
       if (this.game.state.tutorial?.done) this.daily();
     } else { this.welcomeBack(); this.daily(); }
-    void fresh;
   }
 
   daily() {
@@ -82,6 +97,7 @@ class App {
     this.bubbles = new Bubbles(this);
     this.input = new Input(this);
     this.advisor = new Advisor(this);
+    this.launcher = new Launcher(this);
 
     const hall = game.findUnique('cityhall');
     if (hall) this.world.focus(hall.x + 2, hall.z + 1, 22);
@@ -431,11 +447,14 @@ class App {
   // ---------------------------------------------------------------- save management
   async replaceState(s) {
     s.updated = Date.now();
-    try { localStorage.setItem('neustadt.save.v1', JSON.stringify(s)); } catch { /* storage blocked */ }
+    const slot = activeSlot();
+    writeLocalState(slot, s);
+    touchSlot(slot, s);
     if (inClaude()) {
       const b = await claudeBackend();
-      if (b.ok) { try { await saveDoc(b).set({ v: 1, updated: s.updated, json: JSON.stringify(s) }); } catch { /* keep local */ } }
+      if (b.ok) { try { await saveDoc(b, slot).set({ v: 1, updated: s.updated, json: JSON.stringify(s) }); } catch { /* keep local */ } }
     } else await this.pushRaw(s);
+    sessionStorage.setItem('neustadt.skipTitle', '1');
     location.reload();
   }
 
@@ -447,14 +466,14 @@ class App {
   async pushRaw(s) {
     const a = account();
     try {
-      await fetch(`${this.save.base()}/save/${encodeURIComponent(a.id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Key': a.key }, body: JSON.stringify(s) });
+      await fetch(`${this.save.base()}/save/${encodeURIComponent(serverId(a, activeSlot()))}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Key': a.key }, body: JSON.stringify(s) });
     } catch { /* offline */ }
   }
 
   async loadFromCloud() {
     const r = await this.save.fetchCloud();
     if (r.save && r.save.buildings) {
-      localStorage.setItem('neustadt.save.v1', JSON.stringify(r.save));
+      writeLocalState(activeSlot(), r.save);
       location.reload();
     } else this.game.toast(r.none ? 'Für diesen Code gibt es keinen Spielstand' : 'Server nicht erreichbar', 'bad');
   }

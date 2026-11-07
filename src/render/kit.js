@@ -136,6 +136,7 @@ export class Builder {
   // Box with its base at y. `mats` may be a single material or {side, top}.
   box(w, h, d, mats, x = 0, y = 0, z = 0, ry = 0) {
     const side = mats.isMaterial ? mats : mats.side, top = mats.isMaterial ? mats : mats.top;
+    if (!mats.isMaterial && this.detail !== false) this.detailBlock(w, h, d, side, top, x, y, z, ry);
     const g = new THREE.BoxGeometry(w, h, d);
     worldBoxUV(g, w, h, d);
     if (side === top) { this.push(g, side, x, y + h / 2, z, ry); return; }
@@ -158,6 +159,46 @@ export class Builder {
     split(tops, [[12, 6]]);
     this.push(sides, side, x, y + h / 2, z, ry);
     this.push(tops, top, x, y + h / 2, z, ry);
+  }
+
+  // Architectural detail for building blocks: a stone base where the block meets the ground,
+  // a cornice along the roof edge and, on flat roofs, the usual rooftop equipment.
+  detailBlock(w, h, d, side, top, x, y, z, ry) {
+    const sk = side.userData.key || '', tk = top.userData.key || '';
+    if (!sk.startsWith('f') || h < 0.22 || w < 0.3 || d < 0.3) return;
+    const glassy = sk.startsWith('fglass');
+    const c = Math.cos(ry), s = Math.sin(ry);
+    const at = (lx, lz) => [x + lx * c + lz * s, z - lx * s + lz * c];
+    if (y < 0.08) {
+      const ph = Math.min(0.055, h * 0.18);
+      this.box(w + 0.024, ph, d + 0.024, M.color(glassy ? '#3d4650' : '#8f8a82', { rough: 0.9 }), x, y, z, ry);
+    }
+    const flat = tk.startsWith('rgravel') || tk.startsWith('rfield') || tk.startsWith('rmetal') || tk.startsWith('rsolar');
+    if (!flat) return;
+    this.box(w + 0.036, 0.022, d + 0.036, M.color(glassy ? '#c9d2da' : '#ece8df', { rough: 0.6, metal: glassy ? 0.4 : 0 }), x, y + h - 0.022, z, ry);
+    if (!tk.startsWith('rgravel') || w * d < 0.25) return;
+    // rooftop equipment, deterministic per block
+    let seed = Math.abs(Math.floor(x * 73 + z * 131 + h * 17 + w * 7)) % 997;
+    const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    const metal = M.color('#a9aeb4', { metal: 0.5, rough: 0.45 });
+    const n = 1 + Math.floor(rnd() * 3);
+    for (let i = 0; i < n; i++) {
+      const [px, pz] = at((rnd() - 0.5) * w * 0.6, (rnd() - 0.5) * d * 0.6);
+      const kind = rnd();
+      if (kind < 0.45) { this.box(0.11, 0.06, 0.09, metal, px, y + h, pz, ry); this.cyl(0.025, 0.025, 0.012, M.color('#5b6066'), px, y + h + 0.06, pz, 10); }
+      else if (kind < 0.7) { this.cyl(0.018, 0.018, 0.09, metal, px, y + h, pz, 8); this.cyl(0.028, 0.028, 0.012, metal, px, y + h + 0.09, pz, 8); }
+      else this.box(0.16, 0.04, 0.06, M.color('#7d848b', { metal: 0.3 }), px, y + h, pz, ry);
+    }
+    if (h > 1.4 && rnd() < 0.6) {
+      const [px, pz] = at(w * 0.25, -d * 0.2);
+      for (const [lx, lz] of [[-0.04, -0.04], [0.04, -0.04], [-0.04, 0.04], [0.04, 0.04]]) this.box(0.01, 0.08, 0.01, M.color('#5b6066'), px + lx, y + h, pz + lz, 0);
+      this.cyl(0.07, 0.07, 0.1, M.color('#9a7b5a', { rough: 0.8 }), px, y + h + 0.08, pz, 14);
+      this.cone(0.075, 0.04, M.color('#6d5640'), px, y + h + 0.18, pz, 14);
+    }
+    if (h > 2.4 && rnd() < 0.7) {
+      const [px, pz] = at(-w * 0.3, d * 0.25);
+      this.cyl(0.006, 0.01, 0.4, M.color('#d0d4d8', { metal: 0.6 }), px, y + h, pz, 6);
+    }
   }
 
   cyl(rt, rb, h, mat, x = 0, y = 0, z = 0, seg = 16, opts = {}) {
@@ -277,6 +318,13 @@ export const PAL = {
 
 export function lot(b, w, d, kind = 'grass', tint = '#ffffff') {
   b.box(w - 0.04, 0.03, d - 0.04, M.ground(kind, tint), 0, 0, 0);
+  // curb around the plot
+  const curb = M.color('#c9c4ba', { rough: 0.9 });
+  const t = 0.028, hh = 0.042;
+  b.box(w - 0.04, hh, t, curb, 0, 0, d / 2 - 0.02 - t / 2);
+  b.box(w - 0.04, hh, t, curb, 0, 0, -d / 2 + 0.02 + t / 2);
+  b.box(t, hh, d - 0.04 - 2 * t, curb, w / 2 - 0.02 - t / 2, 0, 0);
+  b.box(t, hh, d - 0.04 - 2 * t, curb, -w / 2 + 0.02 + t / 2, 0, 0);
 }
 
 export function tree(b, x, z, s = 1, kind = 0, seed = 0) {

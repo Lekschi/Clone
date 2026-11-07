@@ -439,3 +439,66 @@ button.card:active:not(:disabled) { transform: scale(.97); }
 @keyframes arrowBob { 50% { transform: translateY(10px); } }
 @keyframes tutPulse { 50% { outline-color: rgba(255,211,77,.35); outline-offset: 7px; } }
 @media (max-width: 700px) { .adv-face { width: 64px; height: 64px; } .advisor { bottom: calc(100px + var(--sab)); } .adv-text { font-size: .9rem; } }
+
+/* ------------------------------------------------------------ launcher */
+.title-mode #hud, .title-mode #bubbles, .title-mode .advisor, .title-mode .tut-arrow, .title-mode .modebar { display: none !important; }
+.launcher { position: absolute; inset: 0; z-index: 35; display: flex; flex-direction: column; align-items: center; color: #fff; opacity: 0; transition: opacity .8s ease; }
+.launcher.in { opacity: 1; }
+.launcher.out { opacity: 0; pointer-events: none; }
+.lc-vignette { position: absolute; inset: 0; pointer-events: none; background:
+  radial-gradient(120% 80% at 50% 45%, rgba(8,14,24,0) 40%, rgba(8,14,24,.55) 100%),
+  linear-gradient(180deg, rgba(8,14,24,.55) 0%, rgba(8,14,24,.15) 32%, rgba(8,14,24,0) 55%, rgba(8,14,24,.6) 100%); }
+.lc-logo { position: relative; margin-top: calc(6vh + var(--sat)); display: flex; flex-direction: column; align-items: center; animation: logoIn 1.2s cubic-bezier(.2,.9,.3,1.2) both; }
+.lg-mark { width: clamp(80px, 12vh, 120px); height: auto; filter: drop-shadow(0 10px 24px rgba(0,0,0,.45)); }
+.lc-logo h1 { margin: 6px 0 0; font-size: clamp(2.8rem, 9vh, 5.4rem); font-weight: 900; letter-spacing: .08em; line-height: 1; color: #fff; position: relative;
+  text-shadow: 0 2px 0 #9cc6ee, 0 5px 0 #1c4f86, 0 7px 0 #163f6b, 0 14px 28px rgba(0,0,0,.55); -webkit-text-stroke: 1px rgba(20,60,110,.35); }
+.lc-logo h1 span { color: #ffd34d; text-shadow: 0 2px 0 #ffe9a6, 0 5px 0 #b86e08, 0 7px 0 #8a5206, 0 14px 28px rgba(0,0,0,.55); }
+.lc-logo p { margin: 8px 0 0; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; font-size: .85rem; opacity: .9; text-shadow: 0 2px 8px rgba(0,0,0,.5); }
+.lc-body { position: relative; flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; padding: 0 16px calc(64px + var(--sab)); }
+.launcher[data-screen="menu"] .lc-body { justify-content: flex-start; align-items: flex-end; padding-left: calc(5vw + var(--sal)); }
+.lc-press { font-size: 1.3rem; font-weight: 900; letter-spacing: .1em; color: #fff; padding: 16px 36px; border-radius: 999px; background: rgba(10,20,34,.45); border: 2px solid rgba(255,255,255,.55);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: pressPulse 2s ease-in-out infinite; margin-bottom: 8vh; }
+.lc-menu { display: flex; flex-direction: column; gap: 12px; width: min(420px, 92vw); animation: menuIn .6s cubic-bezier(.2,.9,.3,1.1) both; }
+.lc-btn { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 22px; text-align: left; color: #fff;
+  background: rgba(14,26,42,.62); border: 1px solid rgba(255,255,255,.18); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px rgba(0,0,0,.3); transition: transform .12s, background .2s; }
+.lc-btn:hover { background: rgba(24,40,62,.75); transform: translateX(4px); }
+.lc-btn:active { transform: scale(.98); }
+.lc-btn.primary { background: linear-gradient(180deg, #ffcc3d, #f39a1e); color: #3a2200; border: 0; box-shadow: 0 6px 0 #c06f0c, 0 16px 30px rgba(0,0,0,.35); }
+.lc-btn .lb-ic .ic { width: 40px; height: 40px; }
+.lc-btn .lb-t { display: flex; flex-direction: column; }
+.lc-btn b { font-size: 1.15rem; }
+.lc-btn small { font-weight: 700; opacity: .8; }
+.lc-row { display: flex; gap: 12px; }
+.lc-btn.small { flex: 1; padding: 10px 14px; gap: 8px; }
+.lc-btn.small b { font-size: .95rem; }
+.lc-btn.small .ic { width: 22px; height: 22px; }
+.lc-panel { width: min(640px, 94vw); max-height: 62vh; overflow: auto; padding: 18px 20px; border-radius: 26px; color: var(--ink); background: rgba(250,252,255,.94); box-shadow: 0 24px 60px rgba(0,0,0,.4); animation: menuIn .5s cubic-bezier(.2,.9,.3,1.1) both; }
+.lc-panel h2 { margin: 0 0 12px; }
+.lc-slots { display: flex; flex-direction: column; gap: 10px; }
+.lc-slot { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 18px; background: #fff; box-shadow: 0 0 0 2px var(--line) inset; flex-wrap: wrap; }
+.lc-slot.cur { box-shadow: 0 0 0 2px #7fd6a2 inset; }
+.lc-slot.add { justify-content: center; font-weight: 900; color: var(--muted); padding: 16px; }
+.ls-ic .ic { width: 36px; height: 36px; }
+.ls-t { flex: 1; min-width: 160px; display: flex; flex-direction: column; }
+.ls-t small { color: var(--muted); font-weight: 700; }
+.lc-new { display: flex; gap: 18px; flex-wrap: wrap; }
+.lc-map { width: 220px; height: 220px; border-radius: 18px; box-shadow: 0 0 0 3px #fff, 0 8px 20px rgba(0,0,0,.2); max-width: 100%; }
+.lc-form { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.lc-form label { font-weight: 900; font-size: .85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-top: 6px; }
+.lc-form .inp { width: 100%; font-size: 1.1rem; }
+.lc-form .btn.primary { margin-top: 10px; font-size: 1.05rem; padding: 12px 22px; }
+.lc-link { margin-top: 12px; font-weight: 900; color: #1f6fd0; }
+.lc-panel.credits { text-align: center; max-height: 64vh; overflow: hidden; position: relative; }
+.lc-roll { animation: roll 38s linear infinite; }
+.lc-roll h3 { margin: 22px 0 6px; color: #c2602a; font-size: .85rem; letter-spacing: .12em; text-transform: uppercase; }
+.lc-roll ul { list-style: none; padding: 0; margin: 0; line-height: 1.7; }
+.lc-roll a { color: #1f6fd0; }
+.lc-panel.credits .lc-link { position: absolute; left: 20px; bottom: 12px; background: #fff; padding: 6px 12px; border-radius: 12px; }
+.lc-foot { position: absolute; left: 0; right: 0; bottom: calc(14px + var(--sab)); display: flex; justify-content: space-between; padding: 0 calc(18px + var(--sar)) 0 calc(18px + var(--sal)); font-size: .78rem; font-weight: 800; opacity: .8; text-shadow: 0 1px 4px rgba(0,0,0,.6); pointer-events: none; }
+@keyframes logoIn { from { transform: translateY(-40px) scale(.9); opacity: 0; } }
+@keyframes menuIn { from { transform: translateY(30px); opacity: 0; } }
+@keyframes shine { 0%, 60% { background-position: 150% 0; } 100% { background-position: -100% 0; } }
+@keyframes pressPulse { 50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(255,255,255,.08); } }
+@keyframes roll { from { transform: translateY(40%); } to { transform: translateY(-100%); } }
+@media (max-width: 700px) { .launcher[data-screen="menu"] .lc-body { justify-content: center; padding-left: 16px; } }

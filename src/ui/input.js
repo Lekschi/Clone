@@ -30,6 +30,7 @@ export class Input {
   get world() { return this.app.world; }
 
   down(e) {
+    if (this.app.launcher?.active) return;
     this.el.setPointerCapture?.(e.pointerId);
     this.ptr.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), button: e.button });
     const n = this.ptr.size;
@@ -119,7 +120,7 @@ export class Input {
   }
 
   key(e) {
-    if (e.target.tagName === 'INPUT') return;
+    if (e.target.tagName === 'INPUT' || this.app.launcher?.active) return;
     const k = e.key.toLowerCase();
     const w = this.world;
     if (k === 'q') w.cam.yaw += Math.PI / 8;
