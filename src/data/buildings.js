@@ -6,7 +6,17 @@ const add = (def) => B.push(def);
 
 // --- Housing -------------------------------------------------------------------------------
 add({ id: 'house', name: 'Wohngebiet', cat: 'res', size: [2, 2], cost: 60, costStep: 1.11, costCap: 9000, level: 1,
+  res: { pop: 1, tax: 1, use: 1, label: 'Ausgewogen' },
   desc: 'Bürger ziehen ein. Mit Material ausbauen, damit mehr Menschen hier wohnen.' });
+add({ id: 'workers', name: 'Arbeitersiedlung', cat: 'res', size: [2, 2], cost: 90, costStep: 1.11, costCap: 12000, level: 5,
+  res: { pop: 1.35, tax: 0.75, use: 1.3, smog: 0.5, wants: 'basic', label: 'Viele Bewohner, wenig Steuern' },
+  desc: 'Dicht bebaut und bodenständig. Stört sich kaum an Fabrikabgasen, braucht aber viel Strom und Wasser.' });
+add({ id: 'villa', name: 'Villenviertel', cat: 'res', size: [2, 2], cost: 400, costStep: 1.13, costCap: 30000, level: 9,
+  res: { pop: 0.55, tax: 2.4, use: 0.8, parks: 2, wants: 'luxury', label: 'Wenige Bewohner, hohe Steuern' },
+  desc: 'Großzügige Häuser mit Garten und Pool. Parks in der Nähe machen die Bewohner doppelt glücklich – sie wünschen sich edle Waren.' });
+add({ id: 'eco', name: 'Öko-Siedlung', cat: 'res', size: [2, 2], cost: 700, costStep: 1.13, costCap: 30000, level: 13,
+  res: { pop: 1.05, tax: 1.1, use: 0.5, clean: 12, wants: 'green', label: 'Halber Strom- und Wasserbedarf' },
+  desc: 'Gründächer, Solarzellen und Gemüsegärten. Verbraucht nur die Hälfte an Versorgung und liebt saubere Luft.' });
 
 // --- Utilities -----------------------------------------------------------------------------
 add({ id: 'wind', name: 'Windrad', cat: 'util', group: 'power', size: [1, 1], cost: 400, costStep: 1.12, level: 1, supply: { power: 8 },
@@ -144,6 +154,9 @@ export const ROAD_COST = 10;
 export const UTIL_NAMES = { power: 'Strom', water: 'Wasser', sewage: 'Abwasser', waste: 'Müllabfuhr' };
 export const SERVICE_NAMES = { fire: 'Feuerwehr', police: 'Polizei', health: 'Gesundheit' };
 export const BOOST_NAMES = { park: 'Parks', edu: 'Bildung', fun: 'Unterhaltung', transport: 'Verkehr', landmark: 'Wahrzeichen' };
+
+export const RES_TYPES = B.filter((b) => b.cat === 'res').map((b) => b.id);
+export const isRes = (type) => BUILDINGS[type]?.cat === 'res';
 
 export function maxCount(def, level) {
   if (def.maxFn) return def.maxFn(level);

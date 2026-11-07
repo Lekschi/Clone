@@ -23,7 +23,7 @@ function safeGet(k) { try { return localStorage.getItem(k); } catch { return nul
 function safeSet(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; } }
 
 export function loadSettings() {
-  const def = { sound: true, quality: 'high', shadows: true, daytime: 'cycle', weather: true, server: '' };
+  const def = { sound: true, music: true, quality: 'high', shadows: true, daytime: 'cycle', weather: true, server: '' };
   try { return { ...def, ...JSON.parse(safeGet(SETTINGS_KEY) || '{}') }; } catch { return def; }
 }
 export function saveSettings(s) { safeSet(SETTINGS_KEY, JSON.stringify(s)); }

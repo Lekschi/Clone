@@ -122,6 +122,7 @@ export class Builder {
     tmpP.set(x, y, z);
     tmpS.set(sx, sy, sz);
     tmpM.compose(tmpP, tmpQ, tmpS);
+    if (this.matMap) mat = this.matMap(mat);
     let g = geo.index ? geo.toNonIndexed() : geo;
     g.applyMatrix4(tmpM);
     if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
@@ -223,7 +224,8 @@ export class Builder {
     const g = new THREE.ConeGeometry(Math.SQRT1_2, 1, 4, 1);
     this.push(g, mat, x, y + h / 2, z, ry + Math.PI / 4, 0, 0, 1, 1, 1);
     // scale after rotation: rebuild via matrix
-    const last = this.parts.get(mat.userData.key || mat.uuid).geos;
+    const mm = this.matMap ? this.matMap(mat) : mat;
+    const last = this.parts.get(mm.userData.key || mm.uuid).geos;
     const gg = last[last.length - 1];
     gg.translate(-x, -(y + h / 2), -z);
     gg.rotateY(-ry);

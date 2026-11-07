@@ -33,13 +33,22 @@ export class Bubbles {
         else if (!b.slots.length) { kind = 'open'; html = icon('zzz'); cls = 'idle'; }
       } else if (def.shop) {
         const done = b.queue.filter((s) => s.end <= now);
+        const servable = (b.customers || []).some((c) => c.leaveAt > now && g.stored(c.item) >= c.qty);
         if (done.length) { kind = 'collectS'; html = `<span class="bi">${ITEMS[done[0].item].icon}</span>${done.length > 1 ? `<i>${done.length}</i>` : ''}`; cls = 'ready'; }
+        else if (servable) { kind = 'open'; html = icon('people'); cls = 'ready'; }
         else if (!b.queue.length) { kind = 'open'; html = icon('zzz'); cls = 'idle'; }
-      } else if (b.type === 'house' && inf) {
+      } else if (def.cat === 'res' && inf) {
         if (b.fire) { kind = 'fire'; html = icon('fire'); cls = 'alert fire'; }
         else if (!inf.road) { kind = 'open'; html = icon('road'); cls = 'alert'; }
         else if (inf.missing.length) { kind = 'open'; html = icon(inf.missing[0]); cls = 'alert'; }
-        else if (!g.houseUpgradeBlock(b) && g.hasItems(b.req)) { kind = 'open'; html = icon('up'); cls = 'up'; }
+        else if (b.wish) {
+          // residents voice their wish: an arrow when everything is in stock, otherwise what they want
+          if (!g.houseUpgradeBlock(b) && g.hasItems(b.req)) { kind = 'open'; html = icon('up'); cls = 'up'; }
+          else {
+            const want = Object.keys(b.req).find((k) => g.stored(k) < b.req[k]) || Object.keys(b.req)[0];
+            kind = 'open'; html = `<span class="bi">${ITEMS[want].icon}</span>`; cls = 'wish';
+          }
+        } else if (inf.happy < 50 && b.level < 8) { kind = 'open'; html = icon(inf.happy < 30 ? 'sad' : 'meh'); cls = 'idle mood'; }
       } else if (b.type === 'cityhall') {
         const acc = g.state.taxes.acc;
         if (acc >= Math.max(15, g.taxCap() * 0.2)) { kind = 'taxes'; html = icon('coin'); cls = 'ready'; }

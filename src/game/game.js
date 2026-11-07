@@ -1,6 +1,6 @@
 // Core game model: state, rules, economy and city simulation. No rendering in here.
 import { ITEMS, RAW_IDS, GOOD_IDS, STORAGE_PARTS, EXPAND_PARTS, SHOPS } from '../data/items.js';
-import { BUILDINGS, maxCount, buildCost, ROAD_COST } from '../data/buildings.js';
+import { BUILDINGS, maxCount, buildCost, ROAD_COST, isRes, RES_TYPES } from '../data/buildings.js';
 import {
   xpForNext, levelReward, HOUSE_POP, maxHouseLevelFor, houseUse, START, MAP, START_CHUNKS,
   expansionCost, storageUpgradeCost, shopSlotCost, factorySlotCost, salesSlotCost, skipPrice, itemCrystalPrice, MAX_LEVEL,
@@ -10,6 +10,8 @@ import { fillQuests, questProgress } from './quests.js';
 
 export const SAVE_VERSION = 1;
 const ROAD = -1;
+export const WISH_HAPPY = 50;
+const CUSTOMERS = ['Frau Albers', 'Herr Yilmaz', 'Familie Becker', 'Jonas', 'Frau Nowak', 'Herr Schmidt', 'Mia', 'Opa Karl', 'Frau Haddad', 'Herr Weber', 'Lena', 'Familie Kraus', 'Frau Rossi', 'Herr Lindqvist', 'Emil', 'Frau Wagner'];
 
 export function newState(name = 'Neustadt') {
   const now = Date.now();
@@ -62,7 +64,7 @@ export class Game extends Emitter {
     this.city = { pop: 0, happy: 0, supply: {}, demand: {}, taxRate: 0, houses: 0 };
     this.rebuildGrid();
     this.recompute();
-    for (const b of state.buildings) if (b.type === 'house' && !b.req) this.makeRequest(b);
+    for (const b of state.buildings) if (isRes(b.type) && !b.req) this.makeRequest(b);
     if (!state.market.offers.length) this.refreshMarket(true);
     if (!state.cargo.wagons.length) this.newCargo();
     fillQuests(this);
@@ -139,11 +141,27 @@ export class Game extends Emitter {
     const def = BUILDINGS[type];
     const lvl = this.state.level;
     if (def.level > lvl) return { ok: false, locked: true, reason: `Ab Stufe ${def.level}` };
+    if (isRes(type)) {
+      const z = this.zoneInfo();
+      if (z.used >= z.allowed) return { ok: false, zones: true, reason: z.atLevelCap ? `Mehr Wohngebiete ab Stufe ${lvl + 1}` : `Baue erst bestehende Häuser aus (${z.used}/${z.allowed} Wohngebiete)` };
+    }
     const max = maxCount(def, lvl);
     if (this.countType(type) >= max) return { ok: false, reason: max === 1 ? 'Bereits gebaut' : `Maximal ${max} auf dieser Stufe` };
     const cost = this.costOf(type);
     if (this.state.coins < cost) return { ok: false, cost, reason: 'Nicht genug Münzen' };
     return { ok: true, cost };
+  }
+
+  // New residential zones are earned by upgrading the ones you have (every two upgrade
+  // steps unlock one more), with an upper bound that grows with the player level.
+  zoneInfo() {
+    let used = 0, steps = 0;
+    for (const b of this.state.buildings) if (isRes(b.type)) { used++; steps += (b.level || 1) - 1; }
+    const byUpgrades = 4 + Math.floor(steps / 2);
+    const byLevel = 6 + this.state.level * 3;
+    const allowed = Math.min(byUpgrades, byLevel);
+    const nextAt = (Math.floor(steps / 2) + 1) * 2;
+    return { used, allowed, steps, stepsToNext: nextAt - steps, atLevelCap: byLevel <= byUpgrades };
   }
 
   place(type, x, z, rot = 0) {
@@ -154,11 +172,11 @@ export class Game extends Emitter {
     this.state.coins -= st.cost;
     const def = BUILDINGS[type];
     const b = { id: this.state.nextId++, type, x, z, rot, built: Date.now(), v: Math.floor(Math.random() * 1000) };
-    if (type === 'house') b.level = 1;
+    if (isRes(type)) b.level = 1;
     if (def.factory) { b.slots = []; b.extra = 0; }
     if (def.shop) { b.queue = []; b.qslots = 2; }
     this.state.buildings.push(b);
-    if (type === 'house') this.makeRequest(b);
+    if (isRes(type)) this.makeRequest(b);
     this.rebuildGrid();
     this.recompute();
     this.addXP(Math.max(2, Math.round(Math.sqrt(st.cost) / 3)));
@@ -502,7 +520,15 @@ export class Game extends Emitter {
 
   makeRequest(b) {
     const L = b.level;
-    const { raws, goods } = this.requestPool();
+    const pools = this.requestPool();
+    const raws = pools.raws;
+    let goods = pools.goods;
+    const wants = BUILDINGS[b.type].res?.wants;
+    if (wants && goods.length > 3) {
+      const shopsFor = { basic: ['bausupply', 'hardware', 'farmers', 'bakery'], luxury: ['furniture', 'fashion', 'electro', 'bakery', 'garden'], green: ['garden', 'farmers', 'bakery', 'furniture'] }[wants];
+      const pref = goods.filter((g) => shopsFor.includes(ITEMS[g].shop));
+      if (pref.length >= 2) goods = pref;
+    }
     const types = Math.max(1, Math.min(4, 1 + Math.floor((L + Math.random() * 2) / 2)));
     const req = {};
     const usedPool = [];
@@ -522,6 +548,14 @@ export class Game extends Emitter {
     }
     b.req = req;
     b.reqAt = Date.now();
+    b.wish = 0; // residents voice the wish once they are happy enough
+  }
+
+  // A house wishes for an upgrade only while its residents are happy and supplied.
+  wishReady(b) {
+    const inf = this.info.get(b.id);
+    if (!inf || b.level >= maxHouseLevelFor(this.state.level)) return false;
+    return inf.road && !inf.missing.length && !inf.burning && inf.happy >= WISH_HAPPY;
   }
 
   rerollRequest(bid) {
@@ -539,6 +573,7 @@ export class Game extends Emitter {
     const inf = this.info.get(b.id);
     if (inf && !inf.road) return 'Keine Straßenanbindung';
     if (inf && inf.missing.length) return 'Versorgung fehlt';
+    if (inf && inf.happy < WISH_HAPPY) return `Die Bewohner sind unzufrieden (${inf.happy} %). Erst ab ${WISH_HAPPY} % wünschen sie sich einen Ausbau.`;
     if (b.upgradingUntil && b.upgradingUntil > Date.now()) return 'Wird gerade ausgebaut';
     return null;
   }
@@ -563,6 +598,7 @@ export class Game extends Emitter {
     this.takeItems(b.req);
     b.level++;
     b.upgradingUntil = Date.now() + 3500;
+    b.upgradedAt = Date.now();
     const coins = Math.round(value * 0.45 + 20 * b.level);
     this.state.coins += coins;
     this.state.stats.upgrades++;
@@ -603,10 +639,11 @@ export class Game extends Emitter {
     };
     const left = { ...supply };
     let pop = 0, happySum = 0, houses = 0, taxRate = 0;
-    const houseList = S.buildings.filter((b) => b.type === 'house').sort((a, b) => a.id - b.id);
+    const houseList = S.buildings.filter((b) => isRes(b.type)).sort((a, b) => a.id - b.id);
     for (const b of houseList) {
       const inf = info.get(b.id);
-      const use = houseUse(b.level);
+      const rt = BUILDINGS[b.type].res;
+      const use = Math.max(1, Math.round(houseUse(b.level) * rt.use));
       for (const k of Object.keys(demand)) demand[k] += use;
       if (!inf.road) inf.missing.push('road');
       else {
@@ -628,18 +665,20 @@ export class Game extends Emitter {
       inf.polluted = polluters.some((p) => dist(p) <= p.r);
       inf.burning = !!b.fire;
       let h = 45;
-      for (const k of ['fire', 'police', 'health']) h += !svcAvail[k] || inf.services[k] ? 10 : -5;
-      h += Math.min(25, boostPct * 0.4);
-      if (inf.polluted) h -= 22;
+      for (const k of ['fire', 'police', 'health']) h += !svcAvail[k] || inf.services[k] ? 10 : 0;
+      const parkPct = (inf.boost.park || 0) * ((rt.parks || 1) - 1);
+      h += Math.min(rt.parks ? 35 : 25, (boostPct + parkPct) * 0.4);
+      if (inf.polluted) h -= 22 * (rt.smog ?? 1);
+      else if (rt.clean) h += rt.clean;
       h -= inf.missing.length * 18;
       if (inf.burning) h -= 30;
       inf.happy = Math.max(0, Math.min(100, Math.round(h)));
-      const base = HOUSE_POP[b.level];
+      const base = HOUSE_POP[b.level] * rt.pop;
       inf.pop = Math.round(base * (1 + boostPct / 100) * (inf.missing.length ? 0.5 : 1) * (inf.burning ? 0.3 : 1));
       pop += inf.pop;
       happySum += inf.happy * Math.max(1, inf.pop);
       houses++;
-      if (!inf.missing.length && !inf.burning) taxRate += inf.pop * 0.09 * (0.4 + inf.happy / 100 * 0.8);
+      if (!inf.missing.length && !inf.burning) taxRate += inf.pop * 0.09 * rt.tax * (0.4 + inf.happy / 100 * 0.8);
     }
     this.info = info;
     this.city = {
@@ -884,7 +923,80 @@ export class Game extends Emitter {
     // cargo return
     if (S.cargo.returnAt && S.cargo.returnAt <= now) { this.newCargo(); this.emit('change'); }
     this.fireTick(dtSec);
+    this.wishTick(now);
+    this.shopCustomersTick(now);
     S.updated = now;
+  }
+
+  // ---------------------------------------------------------------- shop customers
+  // Townspeople come into the shops and ask for goods; they pay above market value.
+  shopCustomersTick(now) {
+    if ((this._custT || 0) > now) return;
+    this._custT = now + 5000;
+    let changed = false;
+    for (const b of this.state.buildings) {
+      const def = BUILDINGS[b.type];
+      if (!def.shop) continue;
+      b.customers ||= [];
+      const before = b.customers.length;
+      b.customers = b.customers.filter((c) => c.leaveAt > now);
+      if (b.customers.length !== before) changed = true;
+      if (b.customers.length >= 3 || (b.nextCustomer || 0) > now) continue;
+      const items = SHOPS[def.shop].items.filter((id) => ITEMS[id].level <= this.state.level);
+      if (!items.length) continue;
+      // prefer things the player has made before
+      const known = items.filter((id) => this.state.stats.crafted[id]);
+      const pool = known.length && Math.random() < 0.7 ? known : items;
+      const item = pool[Math.floor(Math.random() * pool.length)];
+      const qty = 1 + Math.floor(Math.random() * (ITEMS[item].value > 400 ? 1 : 3));
+      const pay = Math.round(ITEMS[item].value * qty * (1.25 + Math.random() * 0.35) / 5) * 5;
+      this.state.custSeq = (this.state.custSeq || 0) + 1;
+      b.customers.push({ id: this.state.custSeq, who: CUSTOMERS[Math.floor(Math.random() * CUSTOMERS.length)], item, qty, pay, xp: Math.round(ITEMS[item].xp * qty * 1.6), leaveAt: now + (12 + Math.random() * 12) * 60000 });
+      b.nextCustomer = now + (60 + Math.random() * 120) * 1000;
+      changed = true;
+    }
+    if (changed) this.emit('change');
+  }
+
+  serveCustomer(bid, cid) {
+    const b = this.byId.get(bid);
+    const c = b?.customers?.find((x) => x.id === cid);
+    if (!c) return false;
+    if (this.stored(c.item) < c.qty) return this.fail('Nicht genug auf Lager');
+    this.takeItems({ [c.item]: c.qty });
+    b.customers = b.customers.filter((x) => x !== c);
+    b.nextCustomer = Math.min(b.nextCustomer || 0, Date.now() + 45000);
+    this.state.coins += c.pay;
+    this.state.stats.customers = (this.state.stats.customers || 0) + 1;
+    this.addXP(c.xp);
+    this.emit('served', b, c);
+    this.emit('change');
+    this.questCheck();
+    return true;
+  }
+
+  // Sell goods straight over the counter to passers-by at a fair price.
+  sellOverCounter(item, n = 1) {
+    n = Math.min(n, this.stored(item));
+    if (n <= 0) return 0;
+    this.takeItems({ [item]: n });
+    const coins = Math.max(1, Math.round(ITEMS[item].value * 0.85)) * n;
+    this.state.coins += coins;
+    this.addXP(Math.max(1, Math.round(ITEMS[item].xp * 0.5)) * n);
+    this.emit('change');
+    return coins;
+  }
+
+  // ---------------------------------------------------------------- wishes
+  wishTick(now) {
+    let changed = false;
+    for (const b of this.state.buildings) {
+      if (!isRes(b.type)) continue;
+      const ready = this.wishReady(b) && now - (b.built || 0) > 12000 && now - (b.upgradedAt || 0) > 15000;
+      if (ready && !b.wish) { b.wish = now; changed = true; this.emit('wish', b); }
+      else if (!ready && b.wish) { b.wish = 0; changed = true; }
+    }
+    if (changed) this.emit('change');
   }
 
   // ---------------------------------------------------------------- fires
@@ -898,7 +1010,7 @@ export class Game extends Emitter {
     this.fireAcc = 0;
     let changed = false;
     for (const b of S.buildings) {
-      if (b.type !== 'house') continue;
+      if (!isRes(b.type)) continue;
       const inf = this.info.get(b.id);
       if (!inf) continue;
       if (b.fire && inf.services?.fire) { b.fire = null; changed = true; this.emit('fireOut', b); continue; }

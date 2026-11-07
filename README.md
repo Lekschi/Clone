@@ -10,8 +10,11 @@ Echtgeld-Käufe**: Kristalle verdienst du durch Stufenaufstiege, Aufgaben, Tages
 
 ## Spielinhalte
 
-- **Wohngebiete** mit 8 Ausbaustufen; jeder Ausbau verlangt Material, bringt Einwohner, Münzen, Erfahrung
-  und manchmal Bauteile
+- **Wohngebiete** mit 8 Ausbaustufen in vier Arten: Wohngebiet, Arbeitersiedlung, Villenviertel und
+  Öko-Siedlung. Zufriedene Bewohner (ab 50 %) wünschen sich einen Ausbau; neue Wohngebiete schaltet man
+  frei, indem man bestehende Häuser ausbaut (jede zweite Ausbaustufe ein weiteres)
+- **Tutorial** mit Stadtplanerin Lena in Sprechblasen, die auf Schaltflächen und Gebäude zeigt
+- **Kundschaft** in den Läden kauft produzierte Waren über Marktwert; Ladentheke für Sofortverkauf
 - **Versorgung**: Windrad, Kohle-, Solar-, Gas- und Kernkraftwerk; Wasserturm, Pumpwerk, Wasserwerk;
   Kläranlagen; Mülldeponie, Müllheizkraftwerk, Recyclingzentrum
 - **Dienste** mit Einzugsradius: Feuerwehr, Polizei, Gesundheit. Ungeschützte Häuser können brennen.
@@ -29,6 +32,12 @@ Echtgeld-Käufe**: Kristalle verdienst du durch Stufenaufstiege, Aufgaben, Tages
   Vogelschwärme, Schiffe, Flugzeuge mit Kondensstreifen, Springbrunnen, Baustellen mit Gerüst und Kran
 - Grafikstufen Ultra / Hoch / Schnell; Kamera mit Schwung, Neigung (zwei Finger hoch/runter)
 - Gebäude verschieben, abreißen, drehen; Touch-Steuerung (ziehen, zoomen, mit zwei Fingern drehen)
+
+## Musik und Sounds
+
+Musik: „Sunset Fields“, „Greenlands“, „Haven“, „Fjeld“ (Alexander Nakarada) und „Dreams“ (Sascha Ende),
+filmmusic.io Standard License (frei mit Namensnennung). Soundeffekte: Kenney und UI SFX, beide CC0.
+Details in `public/audio/CREDITS.md` und im Spiel unter Einstellungen.
 
 ## Speichern
 

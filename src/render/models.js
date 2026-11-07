@@ -200,6 +200,127 @@ function houseL8(b, v) {
 
 const HOUSES = [null, houseL1, houseL2, houseL3, houseL4, houseL5, houseL6, houseL7, houseL8];
 
+// ---------------------------------------------------------------- housing themes
+// Workers' estates and eco estates reuse the house shapes with their own materials and details.
+function themeMap(theme, v) {
+  return (mat) => {
+    const k = mat.userData.key || '';
+    if (theme === 'workers') {
+      if (k.startsWith('fplaster') || k.startsWith('fmodern') || k.startsWith('foffice') || k.startsWith('ftimber')) return M.facade('brick', ['#ffffff', '#e8d6cc', '#f2e2d2'][v % 3]);
+      if (k.startsWith('rtiles')) return M.roof('tiles', '#5e3a2e');
+    }
+    if (theme === 'eco') {
+      if (k.startsWith('rgravel')) return M.roof('field', '#9fc38a');
+      if (k.startsWith('rtiles')) return M.roof('field', '#8fb87a');
+      if (k.startsWith('fplaster') || k.startsWith('fbrick')) return M.facade('timber', ['#ffffff', '#f3efe2', '#e9f0e3'][v % 3]);
+      if (k.startsWith('fmodern') || k.startsWith('foffice')) return M.facade('modern', '#e4efe0');
+    }
+    return mat;
+  };
+}
+
+function workersExtras(b, v) {
+  // washing lines and bikes in the yards
+  const pole = M.color('#7a7f86', { metal: 0.4 });
+  b.box(0.012, 0.16, 0.012, pole, -0.85, B0, -0.9);
+  b.box(0.012, 0.16, 0.012, pole, -0.25, B0, -0.9);
+  const cols = ['#e94b3c', '#ffffff', '#2f8fd8', '#f2c230'];
+  for (let i = 0; i < 4; i++) b.box(0.07, 0.06, 0.004, M.color(cols[(i + v) % 4]), -0.78 + i * 0.13, B0 + 0.08, -0.9);
+  b.box(0.6, 0.003, 0.003, M.color('#dddddd'), -0.55, B0 + 0.155, -0.9);
+}
+
+function ecoExtras(b, v) {
+  // vegetable beds and a rain barrel
+  const soil = M.color('#6b4a32', { flat: true });
+  for (let i = 0; i < 3; i++) {
+    b.box(0.32, 0.03, 0.1, soil, -0.6 + i * 0.0, B0, -0.62 - i * 0.13);
+    for (let k = 0; k < 4; k++) b.sphere(0.022, M.color(['#4d8f3a', '#7cb342', '#e8532a'][(k + i + v) % 3], { flat: true }), -0.72 + k * 0.08, B0 + 0.04, -0.62 - i * 0.13, 1, 0.8, 1, 0);
+  }
+  b.cyl(0.05, 0.05, 0.1, M.color('#3d6b3a'), 0.85, B0, -0.85, 10);
+  tree(b, 0.85, 0.85, 0.7, 0, v + 3);
+}
+
+// ---------------------------------------------------------------- villas
+function pool(b, w, d, x, z) {
+  b.box(w + 0.06, 0.035, d + 0.06, M.color('#e9e6df'), x, B0, z);
+  b.box(w, 0.037, d, M.water('pool'), x, B0, z);
+}
+function lounger(b, x, z, ry = 0) {
+  b.box(0.06, 0.012, 0.13, M.color('#ffffff'), x, B0 + 0.02, z, ry);
+}
+
+function villaA(b, v) {
+  lot(b, 2, 2, 'grass');
+  const white = M.facade('modern', ['#ffffff', '#f4f1ea', '#eef2f4'][v % 3]);
+  b.box(1.0, F, 0.7, { side: white, top: M.roof('gravel') }, -0.25, B0, -0.35);
+  b.box(0.7, F, 0.6, { side: M.facade('glass', '#ffffff'), top: M.roof('gravel') }, -0.4, B0 + F, -0.4);
+  b.box(0.75, 0.025, 0.68, M.color('#f4f4f2'), -0.4, B0 + 2 * F, -0.4);
+  b.box(0.5, 0.012, 0.35, M.color('#a57a4f'), 0.45, B0, -0.35);
+  pool(b, 0.55, 0.3, 0.45, 0.15);
+  lounger(b, 0.2, 0.45); lounger(b, 0.32, 0.45);
+  b.box(0.35, 0.012, 0.75, M.ground('paving'), -0.6, B0, 0.6);
+  car(b, -0.6, 0.6, Math.PI / 2, ['#c0392b', '#1d1d1f', '#f4f4f4'][v % 3]);
+  hedge(b, 0, 0.95, 1.9, 0.05, 0.07);
+  tree(b, 0.8, -0.8, 1.0, 2, v);
+  tree(b, 0.85, 0.75, 0.8, 2, v + 1);
+}
+
+function villaB(b, v) {
+  lot(b, 2, 2, 'grass');
+  const wall = M.facade('modern', ['#f6f1e8', '#ffffff', '#eceff1'][v % 3]);
+  b.box(1.2, 2 * F, 0.55, { side: wall, top: M.roof('gravel') }, -0.2, B0, -0.55);
+  b.box(0.5, 2 * F, 0.6, { side: wall, top: M.roof('gravel') }, -0.55, B0, 0.0);
+  b.box(1.3, 0.03, 0.65, M.color('#3b3f45'), -0.2, B0 + 2 * F, -0.55);
+  b.box(0.5, 0.012, 0.8, M.color('#a57a4f'), 0.35, B0, -0.05);
+  pool(b, 0.7, 0.32, 0.4, 0.45);
+  for (let i = 0; i < 3; i++) lounger(b, 0.15 + i * 0.13, 0.1);
+  b.cyl(0.13, 0.13, 0.008, M.color('#ffffff'), 0.75, B0 + 0.1, -0.1, 12);
+  b.cone(0.18, 0.06, M.color('#e94b3c'), 0.75, B0 + 0.2, -0.1, 10);
+  b.cyl(0.005, 0.005, 0.2, M.color('#555'), 0.75, B0, -0.1, 4);
+  car(b, -0.55, 0.65, Math.PI / 2, ['#1d1d1f', '#f4f4f4', '#2f6db1'][v % 3]);
+  hedge(b, 0.2, 0.95, 1.5, 0.05, 0.08);
+  for (const [x, z] of [[0.85, -0.85], [-0.9, -0.88], [0.9, 0.85]]) tree(b, x, z, 0.9, 2, v + x * 3);
+}
+
+function villaC(b, v) {
+  lot(b, 2, 2, 'grass', '#cfe6b8');
+  const wall = M.facade('plaster', ['#f3e7cf', '#efe9df', '#f1e0d6'][v % 3]);
+  const stone = M.color('#ece3d1');
+  b.box(1.5, 3 * F, 0.75, { side: wall, top: M.roof('gravel') }, 0, B0, -0.45);
+  b.hip(1.56, 0.81, 0.3, M.roof('tiles', '#4c5866'), 0, B0 + 3 * F, -0.45);
+  for (let i = 0; i < 4; i++) b.cyl(0.03, 0.035, 2 * F, stone, -0.3 + i * 0.2, B0, -0.02, 10);
+  b.box(0.75, 0.04, 0.2, stone, 0, B0 + 2 * F, -0.02);
+  b.gable(0.75, 0.2, 0.12, M.color('#d9cfbd'), stone, 0, B0 + 2 * F + 0.04, -0.03, 0, 0);
+  b.cyl(0.32, 0.32, 0.012, M.ground('paving', '#e8e0d0'), 0, B0, 0.55, 24);
+  b.cyl(0.1, 0.1, 0.05, stone, 0, B0, 0.55, 16);
+  b.fountain.push(new THREE.Vector3(0, B0 + 0.06, 0.55));
+  pool(b, 0.4, 0.25, 0.7, 0.1);
+  for (const x of [-0.85, 0.85]) for (const z of [-0.85, 0.85]) if (!(x > 0 && z < 0)) tree(b, x, z, 1.0, 1, v + x * 5 + z);
+  hedge(b, -0.55, 0.6, 0.6, 0.06, 0.08);
+  hedge(b, 0.55, 0.6, 0.6, 0.06, 0.08);
+  car(b, -0.25, 0.75, 0, '#1d1d1f');
+}
+
+function villaD(b, v) {
+  lot(b, 2, 2, 'paving');
+  b.box(1.8, F, 1.6, { side: M.facade('glassdark', '#ffffff'), top: M.roof('field', '#9fc38a') }, 0, B0, -0.1);
+  const h = 9 * F;
+  const fw = M.facade(v % 2 ? 'glass' : 'glassdark', '#ffffff');
+  b.box(0.95, h, 0.95, { side: fw, top: M.roof('gravel') }, -0.25, B0 + F, -0.3);
+  for (let f = 2; f <= 10; f++) {
+    b.box(1.15, 0.025, 1.15, M.color('#f2f2f0'), -0.25, B0 + f * F - 0.01, -0.3);
+    b.box(1.15, 0.06, 0.008, M.color('#9fd2ef', { opacity: 0.5, rough: 0.1 }), -0.25, B0 + f * F, 0.27);
+  }
+  b.box(1.0, 0.03, 1.0, M.color('#efefef'), -0.25, B0 + F + h, -0.3);
+  b.box(0.5, 0.032, 0.35, M.water('pool'), -0.35, B0 + F + h, -0.35);
+  tree(b, 0.6, 0.55, 0.6, 2, v);
+  tree(b, 0.65, -0.6, 0.6, 2, v + 1);
+  tree(b, -0.75, 0.65, 0.55, 2, v + 2);
+  car(b, 0.35, 0.75, 0, '#1d1d1f');
+}
+
+const VILLAS = [null, villaA, villaA, villaB, villaB, villaC, villaC, villaD, villaD];
+
 // ============================================================================ utilities
 function windTurbine(b) {
   lot(b, 1, 1, 'grass');
@@ -1030,7 +1151,7 @@ const MODELS = {
 const protoCache = new Map();
 
 export function variantsFor(type) {
-  return type === 'house' ? 6 : 3;
+  return ['house', 'workers', 'villa', 'eco'].includes(type) ? 6 : 3;
 }
 
 // Returns a fresh instance (shared geometry) of the model for a building.
@@ -1041,8 +1162,16 @@ export function makeModel(type, level = 1, v = 0) {
   let proto = protoCache.get(key);
   if (!proto) {
     const b = new Builder();
-    if (type === 'house') HOUSES[Math.max(1, Math.min(8, level))](b, vv);
-    else (MODELS[type] || factory)(b, vv);
+    const L = Math.max(1, Math.min(8, level));
+    if (type === 'house') HOUSES[L](b, vv);
+    else if (type === 'villa') VILLAS[L](b, vv);
+    else if (type === 'workers' || type === 'eco') {
+      b.matMap = themeMap(type, vv);
+      HOUSES[L](b, vv);
+      b.matMap = null;
+      if (type === 'workers' && L <= 4) workersExtras(b, vv);
+      if (type === 'eco' && L <= 4) ecoExtras(b, vv);
+    } else (MODELS[type] || factory)(b, vv);
     proto = b.build();
     protoCache.set(key, proto);
   }

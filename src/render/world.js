@@ -394,7 +394,7 @@ export class World {
 
   syncBuilding(b, anim) {
     const old = this.objs.get(b.id);
-    const level = b.type === 'house' ? b.level : 1;
+    const level = BUILDINGS[b.type].cat === 'res' ? b.level : 1;
     const g = this.game;
     const [w, d] = g.size(b);
     const ang = this.facing(b);
@@ -669,7 +669,7 @@ export class World {
     const g = this.game;
     const good = [], bad = [];
     for (const b of g.state.buildings) {
-      if (b.type !== 'house') continue;
+      if (BUILDINGS[b.type].cat !== 'res') continue;
       const inf = g.info.get(b.id);
       if (!inf) continue;
       let ok;
@@ -770,9 +770,9 @@ export class World {
     const wet = this.weather.wet;
     const C = this._lc || (this._lc = {
       dir: new THREE.Vector3(), skySun: new THREE.Vector3(),
-      sunDay: new THREE.Color('#fff1dc'), sunDusk: new THREE.Color('#ff9a52'), moon: new THREE.Color('#9fb6ff'),
-      hemiN: new THREE.Color('#1b2846'), hemiD: new THREE.Color('#cfe3ff'), gN: new THREE.Color('#2a2418'), gD: new THREE.Color('#6f7d58'),
-      fogDay: new THREE.Color('#c9d9e6'), fogDusk: new THREE.Color('#e7a77a'), fogNight: new THREE.Color('#0a1120'), fogRain: new THREE.Color('#8f9aa4'),
+      sunDay: new THREE.Color('#fff1dc'), sunDusk: new THREE.Color('#ff9a52'), moon: new THREE.Color('#b4c6ff'),
+      hemiN: new THREE.Color('#4a6496'), hemiD: new THREE.Color('#cfe3ff'), gN: new THREE.Color('#463f30'), gD: new THREE.Color('#6f7d58'),
+      fogDay: new THREE.Color('#c9d9e6'), fogDusk: new THREE.Color('#e7a77a'), fogNight: new THREE.Color('#1a2742'), fogRain: new THREE.Color('#8f9aa4'),
       cloudDay: new THREE.Color('#ffffff'), cloudRain: new THREE.Color('#8d949c'), cloudNight: new THREE.Color('#2a3140'), cloudDusk: new THREE.Color('#ffc9a3'), tmp: new THREE.Color(),
     });
     // true sun position for the sky (it sets and rises below the horizon)
@@ -791,17 +791,17 @@ export class World {
     const sc = this.sun.shadow.camera;
     if (Math.abs(sc.right - half) > 0.5) { sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.near = 1; sc.far = 180; sc.updateProjectionMatrix(); }
     this.sun.color.copy(C.moon).lerp(C.sunDusk, smooth(0, 0.5, day)).lerp(C.sunDay, smooth(0.5, 1, day) * (1 - dusk * 0.85));
-    this.sun.intensity = (0.35 + day * 2.6) * (1 - cover * 0.8);
+    this.sun.intensity = (1.05 + day * 1.9) * (1 - cover * 0.8);
     this.sun.shadow.radius = 2 + cover * 6;
-    this.hemi.intensity = (0.25 + day * 0.75) * (1 - cover * 0.1);
+    this.hemi.intensity = (0.62 + day * 0.38) * (1 - cover * 0.1);
     this.hemi.color.copy(C.hemiN).lerp(C.hemiD, day);
     this.hemi.groundColor.copy(C.gN).lerp(C.gD, day);
     this.fog.color.copy(C.fogNight).lerp(C.fogDusk, smooth(0, 0.6, day)).lerp(C.fogDay, smooth(0.55, 1, day) * (1 - dusk));
     this.fog.color.lerp(C.tmp.copy(C.fogRain).multiplyScalar(0.25 + day * 0.75), cover * 0.75);
     this.fog.near = dist * 1.6 + 18 - cover * 10;
     this.fog.far = dist * 4 + 170 - cover * 60;
-    this.scene.environmentIntensity = (0.3 + day * 0.75) * (1 - cover * 0.3);
-    this.renderer.toneMappingExposure = (1.0 + (1 - day) * 0.3) * (1 - cover * 0.18);
+    this.scene.environmentIntensity = (0.55 + day * 0.5) * (1 - cover * 0.3);
+    this.renderer.toneMappingExposure = (1.0 + (1 - day) * 0.45) * (1 - cover * 0.18);
     this.clouds.castShadows(day > 0.5);
     this.skySys.update(this.camera, C.skySun, this.night, cover);
     // lights of the city

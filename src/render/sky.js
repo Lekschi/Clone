@@ -91,7 +91,7 @@ export class SkySystem {
     u.turbidity.value = 5 + weather * 12;
     u.rayleigh.value = 1.4 + weather * 1.5 - night * 0.4;
     u.mieCoefficient.value = 0.004 + weather * 0.01;
-    u.skyGain.value = (0.5 - weather * 0.22) * (1 - night * 0.6);
+    u.skyGain.value = (0.5 - weather * 0.22) * (1 - night * 0.45);
     this.stars.material.opacity = Math.max(0, night - 0.35) * 1.5 * (1 - weather);
     this.stars.rotation.y += 0.00004;
     const md = sunDir.clone().negate();
@@ -109,7 +109,7 @@ export class SkySystem {
     const u = this.envSky.material.uniforms, s = this.sky.material.uniforms;
     for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG', 'skyGain']) u[k].value = s[k].value;
     u.sunPosition.value.copy(sunDir);
-    this.envGround.material.color.setRGB(0.18, 0.26, 0.14).multiplyScalar(Math.max(0.08, 1 - night));
+    this.envGround.material.color.setRGB(0.18, 0.26, 0.14).multiplyScalar(Math.max(0.35, 1 - night));
     const rt = this.pmrem.fromScene(this.envScene, 0, 0.1, 200);
     if (this.envRT) this.envRT.dispose();
     this.envRT = rt;

@@ -9,11 +9,12 @@ import { Panels } from './ui/panels.js';
 import { BuildMenu, ModeBar } from './ui/build.js';
 import { Bubbles } from './ui/bubbles.js';
 import { Input } from './ui/input.js';
+import { Advisor } from './ui/advisor.js';
 import { h, num, icon, esc } from './ui/dom.js';
 import { SaveManager, loadSettings, account } from './save/save.js';
 import { GlobalMarket } from './save/net.js';
 import { inClaude, claudeBackend, saveDoc } from './save/claude.js';
-import { setSound, sfx } from './audio.js';
+import { setSound, setMusic, sfx } from './audio.js';
 
 const OPEN_PANEL = { house: 'house', storage: 'storage', cityhall: 'cityhall', market: 'market', cargo: 'cargo' };
 
@@ -22,6 +23,7 @@ class App {
     this.root = document.getElementById('app');
     this.settings = loadSettings();
     setSound(this.settings.sound);
+    setMusic(this.settings.music !== false);
     this.mode = null;
   }
 
@@ -36,8 +38,12 @@ class App {
     this.start(state, res.server);
     splash.classList.add('out');
     setTimeout(() => splash.remove(), 600);
-    if (fresh) this.welcome(() => this.daily());
-    else { this.welcomeBack(); this.daily(); }
+    if (!this.game.state.tutorial?.done) {
+      this.advisor.onFinish = () => this.daily();
+      this.advisor.start();
+      if (this.game.state.tutorial?.done) this.daily();
+    } else { this.welcomeBack(); this.daily(); }
+    void fresh;
   }
 
   daily() {
@@ -74,6 +80,7 @@ class App {
     this.modebar = new ModeBar(this);
     this.bubbles = new Bubbles(this);
     this.input = new Input(this);
+    this.advisor = new Advisor(this);
 
     const hall = game.findUnique('cityhall');
     if (hall) this.world.focus(hall.x + 2, hall.z + 1, 22);
@@ -89,6 +96,8 @@ class App {
     game.on('questClaimed', (q, part) => { this.hud.toast(`Aufgabe erledigt: ${q.text}`, 'good'); if (part) this.foundPart(part); });
     game.on('expanded', () => this.hud.toast('Neues Bauland gekauft!', 'good'));
     game.on('sold', (s) => this.hud.toast(`${s.qty}× ${ITEMS[s.item].name} verkauft`, 'good'));
+    game.on('wish', () => sfx.notify());
+    game.on('served', (b, c) => this.hud.toast(`${c.who} kauft ${c.qty}× ${ITEMS[c.item].name}`, 'good'));
     game.on('fire', () => this.hud.toast('Feuer in einem Wohngebiet! Feuerwachen schützen vor Bränden.', 'bad'));
 
     window.addEventListener('resize', () => this.world.resize());
@@ -103,6 +112,7 @@ class App {
       if (this.mode?.kind === 'place') this.updateGhost();
       this.world.update(dt);
       this.bubbles.update(dt);
+      this.advisor.update(dt);
       requestAnimationFrame(loop);
     };
     requestAnimationFrame(loop);
@@ -169,7 +179,7 @@ class App {
     const b = this.game.byId.get(bid);
     if (!b) return;
     const def = BUILDINGS[b.type];
-    let kind = OPEN_PANEL[b.type];
+    let kind = def.cat === 'res' ? 'house' : OPEN_PANEL[b.type];
     if (!kind) kind = def.factory ? 'factory' : def.shop ? 'shop' : 'info';
     this.panels.open(kind, bid);
   }
@@ -289,7 +299,7 @@ class App {
         const b = g.place(m.type, m.x, m.z, m.rot);
         if (!b) return;
         const def = BUILDINGS[m.type];
-        if (m.type === 'house' || (def.cat === 'leisure' && def.size[0] === 1) || m.type === 'wind' || m.type === 'watertower') {
+        if (def.cat === 'res' || (def.cat === 'leisure' && def.size[0] === 1) || m.type === 'wind' || m.type === 'watertower') {
           if (g.buildStatus(m.type).ok) {
             const [x, z] = this.findSpot(m.type, m.rot, m.x, m.z);
             m.x = x; m.z = z;

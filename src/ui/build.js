@@ -13,7 +13,7 @@ export class BuildMenu {
 
   open() {
     this.close();
-    const el = h(`<div class="build-menu"><div class="bm-tabs"></div><div class="bm-list"></div><button class="x bm-x" aria-label="Schließen">${icon('close')}</button></div>`);
+    const el = h(`<div class="build-menu"><div class="bm-tabs"></div><div class="zone-banner" hidden></div><div class="bm-list"></div><button class="x bm-x" aria-label="Schließen">${icon('close')}</button></div>`);
     el.addEventListener('click', (e) => {
       if (e.target.closest('.bm-x')) { this.close(); return; }
       const t = e.target.closest('[data-cat]');
@@ -28,6 +28,7 @@ export class BuildMenu {
       }
     });
     this.app.root.appendChild(el);
+    this.app.root.classList.add('bm-open');
     this.el = el;
     this.render();
     requestAnimationFrame(() => el.classList.add('in'));
@@ -37,6 +38,7 @@ export class BuildMenu {
     if (!this.el) return;
     const el = this.el;
     this.el = null;
+    this.app.root.classList.remove('bm-open');
     el.classList.remove('in');
     setTimeout(() => el.remove(), 200);
   }
@@ -66,7 +68,7 @@ export class BuildMenu {
         else if (def.service) meta = `${icon(def.service.kind)} Radius ${def.service.r}`;
         else if (def.boost) meta = `${icon('people')} +${def.boost.pct}%`;
         else if (def.factory) meta = `${def.factory.slots} Plätze`;
-        else if (def.cat === 'res') meta = 'Wohnraum';
+        else if (def.res) meta = def.res.label;
         else if (def.shop) meta = 'Waren';
         cards += `<button class="bm-card ${locked ? 'locked' : ''} ${maxed ? 'maxed' : ''} ${!locked && !maxed && !st.ok ? 'poor' : ''}" data-type="${id}">
           ${fresh ? '<i class="new">NEU</i>' : ''}
@@ -78,6 +80,17 @@ export class BuildMenu {
       }
     }
     $('.bm-list', this.el).innerHTML = cards;
+    const zb = $('.zone-banner', this.el);
+    if (this.cat === 'res') {
+      const z = g.zoneInfo();
+      const full = z.used >= z.allowed;
+      const hint = full
+        ? (z.atLevelCap ? `Mehr Wohngebiete gibt es ab Stufe ${S.level + 1}.` : `Baue noch ${z.stepsToNext} Häuser aus, um ein neues Wohngebiet freizuschalten.`)
+        : `Noch ${z.allowed - z.used} frei. Jede zweite Ausbaustufe bringt ein weiteres Wohngebiet.`;
+      zb.innerHTML = `${icon('home')}<span>Wohngebiete ${z.used}/${z.allowed}</span><div class="bar"><i style="width:${Math.min(100, (z.used / z.allowed) * 100)}%" class="${full ? 'full' : ''}"></i></div><span class="muted">${hint}</span>`;
+      zb.className = `zone-banner ${full ? 'full' : ''}`;
+      zb.hidden = false;
+    } else zb.hidden = true;
     $('.bm-list', this.el).scrollLeft = 0;
     // everything shown in this tab now counts as seen (the NEU tags stay until the menu is reopened)
     let marked = false;

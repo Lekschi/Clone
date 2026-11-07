@@ -3,8 +3,10 @@ import { ITEMS, RAW_IDS, GOOD_IDS, STORAGE_PARTS, EXPAND_PARTS, SHOPS } from '..
 import { BUILDINGS, UTIL_NAMES, SERVICE_NAMES, BOOST_NAMES, BUILD_ORDER } from '../data/buildings.js';
 import { HOUSE_POP, HOUSE_NAMES, xpForNext, maxHouseLevelFor, skipPrice } from '../data/progress.js';
 import { questProgress } from '../game/quests.js';
+import { WISH_HAPPY } from '../game/game.js';
+import { isRes } from '../data/buildings.js';
 import { syncCode, useSyncCode, saveSettings, clearLocal } from '../save/save.js';
-import { setSound, sfx } from '../audio.js';
+import { setSound, setMusic, sfx, TRACKS } from '../audio.js';
 import { inClaude, downloadsApi } from '../save/claude.js';
 
 const CAT_COLOR = { res: '#ff8a5b', util: '#f2b024', service: '#4d8de6', industry: '#8c9aab', commerce: '#ff6a5c', leisure: '#53b04c', fixed: '#7b6cd9' };
@@ -40,6 +42,7 @@ export class Panels {
     if (arg && typeof arg === 'number') this.app.world.select(arg);
     this.refresh(true);
     requestAnimationFrame(() => el.classList.add('in'));
+    sfx.open();
   }
 
   close(instant = false) {
@@ -48,7 +51,7 @@ export class Panels {
     this.cur = null;
     this.app.world.select(null);
     if (instant) c.el.remove();
-    else { c.el.classList.remove('in'); setTimeout(() => c.el.remove(), 220); }
+    else { c.el.classList.remove('in'); setTimeout(() => c.el.remove(), 220); sfx.close(); }
   }
 
   isOpen() { return !!this.cur; }
@@ -104,18 +107,33 @@ export class Panels {
     const boosts = Object.entries(inf.boost || {}).map(([k, v]) => `<span class="pill good">${BOOST_NAMES[k]} +${v}%</span>`).join('') || '<span class="muted small">Parks, Bildung, Unterhaltung und Wahrzeichen in der Nähe steigern die Einwohnerzahl.</span>';
     let up = '';
     const block = g.houseUpgradeBlock(b);
-    if (L >= 8) up = `<div class="note good">Dieses Hochhaus hat die höchste Stufe erreicht.</div>`;
-    else {
+    const def = BUILDINGS[b.type];
+    const rt = def.res;
+    const happyOk = inf.happy >= WISH_HAPPY;
+    if (L >= 8) up = `<div class="note good">Dieses Gebäude hat die höchste Stufe erreicht.</div>`;
+    else if (!happyOk || inf.missing.length || !inf.road || b.fire) {
+      const why = [];
+      if (!inf.road) why.push('eine Straße');
+      if (inf.missing.length) why.push(inf.missing.filter((k) => UTIL_NAMES[k]).map((k) => UTIL_NAMES[k]).join(', '));
+      if (b.fire) why.push('dass der Brand gelöscht wird');
+      if (!why.length) {
+        if (inf.polluted) why.push('saubere Luft');
+        for (const k of ['fire', 'police', 'health']) if (!inf.services?.[k] && lvl >= BUILDINGS[{ fire: 'firesmall', police: 'policesmall', health: 'clinic' }[k]].level) why.push(SERVICE_NAMES[k]);
+        if (!(inf.boostPct > 0)) why.push('einen Park oder Freizeitangebote in der Nähe');
+      }
+      up = `<div class="wishbox sad">${icon('sad', 'xl')}<div><b>Die Bewohner sind noch nicht zufrieden (${inf.happy} %).</b>
+        <p class="muted small">Erst ab ${WISH_HAPPY} % Zufriedenheit wünschen sie sich einen Ausbau. Sie brauchen: ${why.join(', ') || 'etwas Geduld'}.</p></div></div>`;
+    } else {
       const has = g.hasItems(b.req);
       const reqs = Object.entries(b.req).map(([k, n]) => reqChip(g, k, n)).join('');
-      const gainPop = Math.round((HOUSE_POP[L + 1] - HOUSE_POP[L]) * (1 + (inf.boostPct || 0) / 100));
+      const gainPop = Math.round((HOUSE_POP[L + 1] - HOUSE_POP[L]) * rt.pop * (1 + (inf.boostPct || 0) / 100));
       let value = 0, xp = 0;
       for (const [k, n] of Object.entries(b.req)) { value += ITEMS[k].value * n; xp += ITEMS[k].xp * n; }
       const coinR = Math.round(value * 0.45 + 20 * (L + 1));
       const xpR = Math.round(xp * 1.5 + 8 * (L + 1));
       const wait = (b.reqAt || 0) + 5 * 60 * 1000 - Date.now();
       const missP = g.missingCrystals(b.req);
-      up = `<h3>Ausbau auf Stufe ${L + 1} <span class="muted">· ${HOUSE_NAMES[L + 1]}</span></h3>
+      up = `<div class="wishbox">${icon('smile', 'xl')}<div><b>„Wir würden gern ausbauen!“</b><p class="muted small">Die Bewohner wünschen sich diese Dinge für Stufe ${L + 1}${b.type === 'house' ? ` (${HOUSE_NAMES[L + 1]})` : ''}:</p></div></div>
         <div class="reqs">${reqs}</div>
         <div class="rewards"><span class="muted">Belohnung</span> <span class="cur">${icon('people')}+${num(gainPop)}</span> ${coins(coinR)} <span class="cur xp">${icon('xp')}${xpR}</span></div>
         ${block ? `<div class="note bad">${block}${block === 'Erreiche eine höhere Spielerstufe' ? ` (Stufe ${L + 1} ab Spielerstufe ${(L + 1 - 2) * 2})` : ''}</div>` : ''}
@@ -126,7 +144,7 @@ export class Panels {
         </div>`;
     }
     return {
-      title: HOUSE_NAMES[L], sub: `Wohngebiet · Stufe ${L} von ${maxHouseLevelFor(lvl)}`, img: this.app.thumb('house', L), color: CAT_COLOR.res,
+      title: b.type === 'house' ? HOUSE_NAMES[L] : def.name, sub: `${b.type === 'house' ? 'Wohngebiet' : rt.label} · Stufe ${L} von ${maxHouseLevelFor(lvl)}`, img: this.app.thumb(b.type, L), color: CAT_COLOR.res,
       body: `<div class="stats">
           <div class="stat">${icon('people')}<b>${num(inf.pop)}</b><span>Einwohner</span></div>
           <div class="stat">${icon(inf.happy >= 65 ? 'smile' : inf.happy >= 40 ? 'meh' : 'sad')}<b>${inf.happy}%</b><span>Zufriedenheit</span></div>
@@ -228,9 +246,33 @@ export class Panels {
       body: `<div class="slots">${q}</div>
         ${anyDone ? '<button class="btn primary wide" data-act="collectS">Einsammeln</button>' : ''}
         ${c.skip != null ? this.skipBox(b, c.skip) : ''}
-        <div class="grid recipes">${recipes}</div>`,
+        ${this.customersBox(b)}
+        <div class="grid recipes">${recipes}</div>
+        ${this.counterBox(b)}`,
       foot: this.bFoot(b),
     };
+  }
+
+  customersBox(b) {
+    const g = this.game;
+    const list = (b.customers || []).filter((c) => c.leaveAt > Date.now());
+    if (!list.length) return `<div class="box cust empty"><span class="muted small">Gerade ist keine Kundschaft im Laden. Neue Kunden kommen alle paar Minuten.</span></div>`;
+    return `<h3>Kundschaft <span class="muted">zahlt mehr als der Marktwert</span></h3><div class="custs">${list.map((c) => {
+      const can = g.stored(c.item) >= c.qty;
+      return `<div class="cust-card ${can ? 'can' : ''}"><div class="avatar">${esc(c.who.split(' ').pop()[0])}</div>
+        <div class="cust-t"><b>${esc(c.who)}</b><span class="muted small">möchte ${c.qty}× ${ITEMS[c.item].name} · geht in ${fmtTime((c.leaveAt - Date.now()) / 1000)}</span></div>
+        ${reqChip(g, c.item, c.qty)}
+        <button class="btn ${can ? 'primary' : 'ghost'} small" data-act="serve" data-arg="${c.id}" ${can ? '' : 'disabled'}>Verkaufen ${coins(c.pay)}</button></div>`;
+    }).join('')}</div>`;
+  }
+
+  counterBox(b) {
+    const g = this.game;
+    const def = BUILDINGS[b.type];
+    const ids = SHOPS[def.shop].items.filter((id) => g.stored(id) > 0);
+    if (!ids.length) return '';
+    return `<h3>Ladentheke <span class="muted">sofort an Laufkundschaft verkaufen</span></h3><div class="counter">${ids.map((id) => `
+      <button class="tile" data-act="counter" data-arg="${id}">${itemIcon(id, 'lg')}<b>${g.stored(id)}</b><span>${coins(Math.max(1, Math.round(ITEMS[id].value * 0.85)))}</span></button>`).join('')}</div>`;
   }
 
   // -------------------------------------------------------------- storage
@@ -277,7 +319,7 @@ export class Panels {
 
   cityStats() {
     const g = this.game, S = g.state;
-    const houses = S.buildings.filter((b) => b.type === 'house');
+    const houses = S.buildings.filter((b) => isRes(b.type));
     const cov = (k) => houses.length ? Math.round(houses.filter((b) => g.info.get(b.id)?.services?.[k]).length / houses.length * 100) : 0;
     const pol = houses.length ? Math.round(houses.filter((b) => g.info.get(b.id)?.polluted).length / houses.length * 100) : 0;
     const util = Object.keys(UTIL_NAMES).map((k) => {
@@ -471,7 +513,8 @@ export class Panels {
     return {
       title: 'Einstellungen', icon: icon('gear'), color: '#5a6b7d',
       body: `<div class="kv"><span>Stadtname</span><input class="inp" id="cityName" value="${esc(g.state.name)}" maxlength="28"></div>
-        <div class="kv"><span>Ton</span><div class="segs">${opt('sound', true, 'An')}${opt('sound', false, 'Aus')}</div></div>
+        <div class="kv"><span>Soundeffekte</span><div class="segs">${opt('sound', true, 'An')}${opt('sound', false, 'Aus')}</div></div>
+        <div class="kv"><span>Musik</span><div class="segs">${opt('music', true, 'An')}${opt('music', false, 'Aus')}</div></div>
         <div class="kv"><span>Grafik</span><div class="segs">${opt('quality', 'ultra', 'Ultra')}${opt('quality', 'high', 'Hoch')}${opt('quality', 'low', 'Schnell')}</div></div>
         <div class="kv"><span>Wetter</span><div class="segs">${opt('weather', true, 'Wechselnd')}${opt('weather', false, 'Immer klar')}</div></div>
         <div class="kv"><span>Schatten</span><div class="segs">${opt('shadows', true, 'An')}${opt('shadows', false, 'Aus')}</div></div>
@@ -489,6 +532,12 @@ export class Panels {
           <label class="btn ghost small">Importieren<input type="file" id="importFile" accept=".json,application/json" hidden></label>
           <button class="btn ghost small danger" data-act="reset">${c.confirmReset ? 'Wirklich alles löschen?' : 'Neues Spiel'}</button>
         </div></div>
+        <details class="box credits"><summary><b>Musik & Sounds – Mitwirkende</b></summary>
+          <p class="small">Musik von filmmusic.io (Standard-Lizenz, frei mit Nennung):</p>
+          <ul class="small">${TRACKS.map((t) => `<li>„${t.title}“ von ${t.artist} – <a href="${t.url}" target="_blank" rel="noopener">filmmusic.io</a></li>`).join('')}</ul>
+          <p class="small">Lizenz: <a href="https://filmmusic.io/standard-license" target="_blank" rel="noopener">filmmusic.io/standard-license</a></p>
+          <p class="small">Soundeffekte: Kenney (kenney.nl) und UI SFX (uisfx.com), beide CC0 / gemeinfrei.</p>
+        </details>
         <p class="muted small center">Neustadt · ein Städtebauspiel ohne Echtgeld-Käufe</p>`,
     };
   }
@@ -541,6 +590,12 @@ export class Panels {
       case 'craft': if (g.queueGood(bid, arg)) sfx.tap(); break;
       case 'collectS': if (g.collectShop(bid)) sfx.collect(); break;
       case 'buySSlot': if (g.buyShopSlot(bid)) sfx.coin(); break;
+      case 'serve': {
+        const cu = g.byId.get(bid)?.customers?.find((x) => x.id === Number(arg));
+        if (cu && g.serveCustomer(bid, cu.id)) { sfx.coin(); const r = el.getBoundingClientRect(); app.hud.float(r.left + 40, r.top, `+${num(cu.pay)} ${icon('coin')}`); }
+        break;
+      }
+      case 'counter': { const n = g.sellOverCounter(arg, 1); if (n) { sfx.coin(); const r = el.getBoundingClientRect(); app.hud.float(r.left + 30, r.top, `+${num(n)} ${icon('coin')}`); } break; }
       case 'selItem': c.sel = c.sel === arg ? null : arg; break;
       case 'scrap': g.sellToScrap(c.sel, 1); sfx.coin(); break;
       case 'upStorage': if (g.upgradeStorage()) sfx.upgrade(); break;
@@ -575,12 +630,13 @@ export class Panels {
       case 'loadWagon': if (g.loadWagon(Number(arg))) sfx.collect(); break;
       case 'skipCargo': g.skipCargo(); break;
       case 'buyLand': if (g.expand(c.arg)) { sfx.level(); this.close(); return; } break;
-      case 'claim': if (g.claimQuest(Number(arg))) sfx.coin(); break;
+      case 'claim': if (g.claimQuest(Number(arg))) sfx.reward(); break;
       case 'set': {
         const [k, v] = arg.split(':');
         app.settings[k] = v === 'true' ? true : v === 'false' ? false : v;
         saveSettings(app.settings);
         if (k === 'sound') setSound(app.settings.sound);
+        if (k === 'music') setMusic(app.settings.music);
         app.world.applyQuality();
         break;
       }

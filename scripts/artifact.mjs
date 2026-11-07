@@ -19,6 +19,17 @@ ${body}
 ${js.map((f) => `<script type="module" src="${f}"></script>`).join('\n')}
 `;
 fs.writeFileSync(path.join(out, 'index.html'), page);
-const files = Object.fromEntries([...css, ...js].map((f) => [f, `artifact/${f}`]));
+// sound effects and music (served next to the page)
+const audio = [];
+const walk = (dir) => {
+  for (const e of fs.readdirSync(path.join(dist, dir), { withFileTypes: true })) {
+    const rel = `${dir}/${e.name}`;
+    if (e.isDirectory()) walk(rel);
+    else if (/\.(mp3|m4a|ogg)$/.test(e.name)) audio.push(rel);
+  }
+};
+if (fs.existsSync(path.join(dist, 'audio'))) walk('audio');
+for (const f of audio) { fs.mkdirSync(path.dirname(path.join(out, f)), { recursive: true }); fs.copyFileSync(path.join(dist, f), path.join(out, f)); }
+const files = Object.fromEntries([...css, ...js, ...audio].map((f) => [f, `artifact/${f}`]));
 fs.writeFileSync(path.join(out, 'files.json'), JSON.stringify(files, null, 2));
 console.log('artifact page written:', Object.keys(files).join(', '));
