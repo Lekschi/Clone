@@ -1,28 +1,38 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Meridian">
-<meta name="theme-color" content="#1d2124">
-<meta name="description" content="Meridian — an isometric city builder for iPad. Zone, power, plan and grow your city.">
-<title>Meridian</title>
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="assets/icons/icon-180.png">
-<link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="css/app.css">
-<link rel="stylesheet" href="css/launcher.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#14202e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Neustadt">
+  <meta name="description" content="Neustadt – baue deine eigene Stadt: Wohngebiete, Fabriken, Läden, Versorgung und Wahrzeichen.">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icons/icon-180.png">
+  <title>Neustadt</title>
 </head>
 <body>
-<canvas id="bg"></canvas>
-<div class="veil"></div>
-<main class="lp" id="lp"></main>
-<script type="module" src="js/launcher.js"></script>
-<script>
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
-</script>
+  <div id="app">
+    <div id="view"></div>
+    <div id="splash">
+      <div class="sp-logo">
+        <svg viewBox="0 0 120 120" aria-hidden="true">
+          <defs><linearGradient id="spg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6fd0ff"/><stop offset="1" stop-color="#2a7fd4"/></linearGradient></defs>
+          <rect x="6" y="6" width="108" height="108" rx="28" fill="url(#spg)"/>
+          <rect x="22" y="52" width="18" height="44" rx="3" fill="#fff" opacity=".85"/>
+          <rect x="46" y="30" width="22" height="66" rx="3" fill="#fff"/>
+          <rect x="74" y="44" width="22" height="52" rx="3" fill="#fff" opacity=".9"/>
+          <rect x="16" y="94" width="88" height="6" rx="3" fill="#ffd34d"/>
+        </svg>
+      </div>
+      <h1>Neustadt</h1>
+      <p>Stadt wird geladen…</p>
+      <div class="sp-bar"><i></i></div>
+    </div>
+  </div>
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>
